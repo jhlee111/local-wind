@@ -42,7 +42,8 @@
 - **M2.5 — 포인트 예보 UX** (windy.app 클릭 UX 벤치마크, 2026-07-12 계획):
   - **M2.5a 클릭-anywhere 패널 ✅ (2026-07-12)**: 지도 임의 지점 클릭 → `sampleUV()` 재사용 패널(coords 제목, 예보만, D10 라벨 "HRRR 3 km grid · interpolated (no station)", 임시 포인트 마커, bbox 밖 무시, 관측 범례 자동 숨김+과거창 3h 축소). 사용자 실브라우저 검증 + 라이브 배포 완료
   - **M2.5b 스팟 주간 테이블 ✅ (2026-07-12)**: `localwind.spot_series` — HRRR f00–f18(native 1h, 래스터와 같은 런 probe) + GFS 0.25° 3h → f168(~7일) point-series JSON → 패널에 3h 매트릭스(일자 헤더·kt/gust 팔레트 색칠+휘도 기반 잉크·방향 화살표·now 링·가로 스크롤). 래스터도 f18(19프레임)로 확장. 로컬·라이브 검증. 차트 예보선에도 모델 거스트 점 표시(series에서 시각 매칭 주입, 2026-07-12). **TODO**: NBM으로 장기 구간 업그레이드(보정된 point guidance), GFS 중복 다운로드 절약(런 변경시만), ad-hoc 포인트 장기예보(Open-Meteo)
-- **M2.6 — UX 리디자인** (2026-07-12 계획, 구현 대기): 단일 타임라인(D12) + 반응형(D13-D15). 설계 문서: [ux-redesign.md](ux-redesign.md). 단계: UX-1(시간 상태 리팩터) → UX-2(타임라인 바+범례 코너) → UX-3(테이블↔차트 연동) → UX-4(모바일 하단 시트) → UX-5(임의지점 Open-Meteo 테이블+폴리시). 각 단계 독립 배포 가능
+- **M2.6 — UX 리디자인** (2026-07-12 진행 중): 단일 타임라인(D12) + 반응형(D13-D15). 설계 문서: [ux-redesign.md](ux-redesign.md). 단계: **UX-1 ✅ (2026-07-12)** → UX-2(타임라인 바+범례 코너) → UX-3(테이블↔차트 연동) → UX-4(모바일 하단 시트) → UX-5(임의지점 Open-Meteo 테이블+폴리시). 각 단계 독립 배포 가능
+  - UX-1: `web/src/state.ts` 단일 시간 스토어(times = 래스터 frames ∪ 8일 spot series, 미니 pub/sub). 슬라이더·맵 래스터·주간 테이블이 구독자로 전환, `loadSeries()` 공유 메모이즈. 테이블 `sel-col` 클래스는 emit만(스타일은 UX-2에서) → 시각 무변화. 보너스 수정: 빠른 스크럽 시 텍스처 디코드 완료 순서 역전으로 래스터/라벨이 뒤로 되돌아가는 선존재 레이스에 stale-완료 드롭 가드. 데스크톱+375px 검증 완료
 - 다음: **M2.6(UX)** → M3(WindNinja 지형 토글) 또는 M4 조기 착수(관측 데이터가 이미 쌓이는 중이므로 2-3주 후 bias 분석 가능)
 - **M3**: WindNinja(mass solver, HRRR init, 3DEP 10m + NLCD) ~200m 레이어 토글. **DoD**: 동일 시각 HRRR raw vs 다운스케일 비교 화면
 - **M4**: 검증 대시보드 + 스팟 통계보정. **DoD**: 스팟·시간대별 bias 차트, 보정 전/후 MAE 리포트 → **D5 재평가(WindNinja 정식 채택 여부) + 보정 모델 예보 적용**

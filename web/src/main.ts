@@ -15,7 +15,8 @@ import {
   WIND_PALETTE,
   legendGradient,
 } from './palette.ts';
-import { setupSpots, type Spot } from './spots.ts';
+import { loadSeries, setupSpots, type Spot } from './spots.ts';
+import { initTimes, nearestIdx, selectTime, selectedMs, subscribe } from './state.ts';
 
 interface Frame {
   fxx: number;
@@ -108,6 +109,9 @@ async function init(): Promise<void> {
   async function setFrame(i: number): Promise<void> {
     const frame = manifest.frames[i];
     const image = await texture(i);
+    // texture decodes resolve out of order under fast scrubbing — drop
+    // completions that no longer match the store's selection
+    if (renderedFrame !== i) return;
     overlay.setProps({
       layers: [
         new RasterLayer({
@@ -152,8 +156,37 @@ async function init(): Promise<void> {
   // click-anywhere point forecast (M2.5a) — maplibre suppresses click after drag
   map.on('click', (e) => spotsApi.openPoint(e.lngLat.lat, e.lngLat.lng));
 
+  // D12 single time state: selectable instants start as the raster frame
+  // times; the 8-day spot series extends them once it loads (the series
+  // reaches past the raster's +18 h horizon — timeline UI uses that in UX-2).
+  const frameTimes = manifest.frames.map((f) => Date.parse(f.validTime));
+  initTimes(frameTimes);
+  void loadSeries().then((sj) => {
+    const spotId = manifest.spots?.[0]?.id;
+    const series = spotId ? (sj?.spots[spotId]?.series ?? []) : [];
+    if (series.length > 0) {
+      initTimes([...frameTimes, ...series.map((p) => Date.parse(p.t))]);
+    }
+  });
+
+  // The map raster is a view of the store: nearest frame to T. Past the
+  // raster horizon it holds the last frame (reachable from UX-2's timeline).
+  let renderedFrame = -1;
+  let mapReady = false;
+  const applyTime = (): void => {
+    if (!mapReady) return;
+    const fi = nearestIdx(frameTimes, selectedMs());
+    slider.value = String(fi);
+    if (fi === renderedFrame) return;
+    renderedFrame = fi;
+    void setFrame(fi);
+  };
+  subscribe(applyTime);
+
   slider.max = String(manifest.frames.length - 1);
-  slider.addEventListener('input', () => void setFrame(Number(slider.value)));
+  slider.addEventListener('input', () =>
+    selectTime(frameTimes[Number(slider.value)]),
+  );
 
   // First render must NOT depend on the basemap: deck.gl renders on its own,
   // and 'load' never fires if the basemap host is blocked/unreachable. Fire on
@@ -177,12 +210,20 @@ async function init(): Promise<void> {
   const start = () => {
     if (started) return;
     started = true;
-    void setFrame(0);
+    mapReady = true;
+    applyTime();
   };
   if (map.loaded()) start();
   map.on('load', start);
   map.on('style.load', start);
   setTimeout(start, 6500);
+
+  if (import.meta.env.DEV) {
+    // preview-pane debugging handles (tree-shaken out of builds)
+    const w = window as unknown as Record<string, unknown>;
+    w.__lwMap = map;
+    w.__lwTime = { selectTime, selectedMs, initTimes };
+  }
 }
 
 void init();

@@ -5,6 +5,7 @@
 import maplibregl from 'maplibre-gl';
 import type { TextureData } from 'weatherlayers-gl';
 import { MS_TO_KT, colorForKt, inkFor } from './palette.ts';
+import { nearestIdx, selectedMs, subscribe } from './state.ts';
 
 export interface Spot {
   id: string;
@@ -40,7 +41,7 @@ interface ObsJson {
   sources: Record<string, ObsPoint[]>;
 }
 
-interface SeriesPt {
+export interface SeriesPt {
   t: string;
   spd: number;
   gust: number | null;
@@ -48,9 +49,21 @@ interface SeriesPt {
   src: string;
 }
 
-interface SeriesJson {
+export interface SeriesJson {
   generated: string;
   spots: Record<string, { name: string; series: SeriesPt[] }>;
+}
+
+// Shared, memoized spots_series.json fetch — the panel (week table) and the
+// time store (8-day selectable range, main.ts) both read from it.
+let seriesPromise: Promise<SeriesJson | null> | undefined;
+export function loadSeries(): Promise<SeriesJson | null> {
+  seriesPromise ??= fetch('/data/spots_series.json', {
+    signal: AbortSignal.timeout(8000),
+  })
+    .then((r) => (r.ok ? (r.json() as Promise<SeriesJson>) : null))
+    .catch(() => null);
+  return seriesPromise;
 }
 
 interface Pt {
@@ -112,20 +125,6 @@ export function setupSpots(
     return obsCache;
   }
 
-  let seriesCache: SeriesJson | null | undefined;
-  async function getSeries(): Promise<SeriesJson | null> {
-    if (seriesCache !== undefined) return seriesCache;
-    try {
-      const r = await fetch('/data/spots_series.json', {
-        signal: AbortSignal.timeout(8000),
-      });
-      seriesCache = r.ok ? ((await r.json()) as SeriesJson) : null;
-    } catch {
-      seriesCache = null;
-    }
-    return seriesCache;
-  }
-
   for (const spot of spots) {
     const el = document.createElement('div');
     el.className = 'spot-marker';
@@ -163,6 +162,17 @@ export function setupSpots(
 
   const tableEl = document.getElementById('sp-table') as HTMLDivElement;
 
+  // D12: the week table is a view of the time store — while the panel is
+  // open, re-render it when T changes so the selected column can track T.
+  // (Column *clicks* publish back into the store in UX-3.)
+  let openSeries: SeriesPt[] = [];
+  subscribe(() => {
+    if (panel.hidden || openSeries.length === 0) return;
+    const scroll = tableEl.scrollLeft; // innerHTML swap must not reset it
+    renderWeekTable(tableEl, openSeries);
+    tableEl.scrollLeft = scroll;
+  });
+
   async function openSpot(spot: Spot): Promise<void> {
     if (spot.id !== 'point') pointMarker?.remove();
     panel.hidden = false;
@@ -179,10 +189,11 @@ export function setupSpots(
     const [textures, obs, seriesJson] = await Promise.all([
       Promise.all(manifest.frames.map((_f, i) => getTexture(i))),
       getObs(),
-      spot.id === 'point' ? Promise.resolve(null) : getSeries(),
+      spot.id === 'point' ? Promise.resolve(null) : loadSeries(),
     ]);
 
     const weekSeries = seriesJson?.spots[spot.id]?.series ?? [];
+    openSeries = weekSeries;
     if (weekSeries.length > 0) {
       renderWeekTable(tableEl, weekSeries);
       tableEl.hidden = false;
@@ -409,7 +420,7 @@ function render(
 }
 
 /** windy-style week matrix: 3 h columns × (hour / kt / gust / dir) rows. */
-function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
+export function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
   const now = Date.now();
   const pts = series
     .map((p) => ({ ...p, ms: Date.parse(p.t) }))
@@ -428,6 +439,12 @@ function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
       timeZone: TZ,
     });
   const nowIdx = pts.findIndex((p) => Math.abs(p.ms - now) <= 1.5 * 3_600_000);
+  // D12: column nearest the store's selected instant. Class is emitted now,
+  // styled from UX-2 (so this refactor stays visually inert).
+  const selMs = selectedMs();
+  const selIdx = Number.isNaN(selMs)
+    ? -1
+    : nearestIdx(pts.map((p) => p.ms), selMs);
 
   // day header with colspans
   const dayCells: string[] = [];
@@ -441,24 +458,24 @@ function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
 
   const edge = (i: number) =>
     i > 0 && dayOf(pts[i].ms) !== dayOf(pts[i - 1].ms) ? ' day-edge' : '';
-  const nowCls = (i: number) => (i === nowIdx ? ' now-col' : '');
+  const cls = (i: number) =>
+    `${edge(i)}${i === nowIdx ? ' now-col' : ''}${i === selIdx ? ' sel-col' : ''}`;
 
   const hourCells = pts
-    .map((p, i) =>
-      `<td class="${edge(i)}${nowCls(i)}">${localHour(p.ms) % 24}</td>`)
+    .map((p, i) => `<td class="${cls(i)}">${localHour(p.ms) % 24}</td>`)
     .join('');
 
   const ktCell = (val: number | null, i: number) => {
-    if (val == null) return `<td class="${edge(i)}${nowCls(i)}">–</td>`;
+    if (val == null) return `<td class="${cls(i)}">–</td>`;
     const kt = val * MS_TO_KT;
     const bg = colorForKt(kt);
-    return `<td class="${edge(i)}${nowCls(i)}" style="background:${bg};color:${inkFor(bg)}">${Math.round(kt)}</td>`;
+    return `<td class="${cls(i)}" style="background:${bg};color:${inkFor(bg)}">${Math.round(kt)}</td>`;
   };
   const spdCells = pts.map((p, i) => ktCell(p.spd, i)).join('');
   const gustCells = pts.map((p, i) => ktCell(p.gust, i)).join('');
   const dirCells = pts
     .map((p, i) =>
-      `<td class="${edge(i)}${nowCls(i)}"><span style="transform:rotate(${(p.dir + 180) % 360}deg)">↑</span></td>`)
+      `<td class="${cls(i)}"><span style="transform:rotate(${(p.dir + 180) % 360}deg)">↑</span></td>`)
     .join('');
 
   el.innerHTML =
