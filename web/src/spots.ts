@@ -187,16 +187,23 @@ export function setupSpots(
       renderWeekTable(tableEl, weekSeries);
       tableEl.hidden = false;
     }
+    // model gust lives in the point series (rasters only carry U/V) —
+    // graft it onto the chart's forecast points by valid time
+    const gustByTime = new Map(
+      weekSeries.map((p) => [Date.parse(p.t), p.gust] as const),
+    );
 
     const fcst: Pt[] = manifest.frames.map((f, i) => {
       const { u, v } = sampleUV(
         textures[i], manifest.bounds, manifest.unscale, spot.lon, spot.lat,
       );
+      const t = Date.parse(f.validTime);
+      const gustMs = gustByTime.get(t);
       return {
-        t: Date.parse(f.validTime),
+        t,
         spd: Math.hypot(u, v) * MS_TO_KT,
         dir: dirFrom(u, v),
-        gust: null,
+        gust: gustMs != null ? gustMs * MS_TO_KT : null,
       };
     });
 
@@ -308,7 +315,7 @@ function render(
   const maxV = Math.max(
     10,
     ...obsPts.map((p) => Math.max(p.spd, p.gust ?? 0)),
-    ...fcst.map((p) => p.spd),
+    ...fcst.map((p) => Math.max(p.spd, p.gust ?? 0)),
   );
   const yMax = Math.max(15, Math.ceil(maxV / 5) * 5);
 
@@ -374,6 +381,11 @@ function render(
       parts.push(
         `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.spd).toFixed(1)}" r="2" fill="${FCST_COLOR}"/>`,
       );
+      if (p.gust != null) {
+        parts.push(
+          `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.gust).toFixed(1)}" r="1.8" fill="${FCST_COLOR}" opacity="0.45"/>`,
+        );
+      }
     }
     const fl = fcst[fcst.length - 1];
     parts.push(
@@ -508,7 +520,11 @@ function attachHover(
     }
     if (f && Math.abs(f.t - t) <= 45 * 60_000) {
       anchor = f.t;
-      bits.push(`HRRR ${f.spd.toFixed(1)} kt @${Math.round(f.dir ?? 0)}°`);
+      bits.push(
+        `HRRR ${f.spd.toFixed(1)} kt` +
+          (f.gust != null ? ` g${f.gust.toFixed(0)}` : '') +
+          ` @${Math.round(f.dir ?? 0)}°`,
+      );
     }
     if (bits.length === 0) {
       hide();
