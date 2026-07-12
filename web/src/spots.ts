@@ -8,6 +8,7 @@
 import maplibregl from 'maplibre-gl';
 import type { TextureData } from 'weatherlayers-gl';
 import { MS_TO_KT, colorForKt, inkFor } from './palette.ts';
+import { sheetEnsureVisible } from './sheet.ts';
 import {
   TZ,
   dayKey,
@@ -206,6 +207,7 @@ export function setupSpots(
   async function openSpot(spot: Spot): Promise<void> {
     if (spot.id !== 'point') pointMarker?.remove();
     panel.hidden = false;
+    sheetEnsureVisible(); // mobile: a peeked sheet pops to half on new content
     nameEl.textContent = spot.name;
     nowEl.textContent = 'loading…';
     obsLegendItem.style.display = spot.obs ? '' : 'none';

@@ -15,6 +15,7 @@ import {
   WIND_PALETTE,
   legendGradient,
 } from './palette.ts';
+import { setupSheet } from './sheet.ts';
 import { loadSeries, setupSpots, type Spot } from './spots.ts';
 import { initTimes, nearestIdx, selectTime, selectedMs, subscribe } from './state.ts';
 import { setupTimeline } from './timeline.ts';
@@ -151,6 +152,11 @@ async function init(): Promise<void> {
   const spotsApi = setupSpots(map, manifest, texture);
   // click-anywhere point forecast (M2.5a) — maplibre suppresses click after drag
   map.on('click', (e) => spotsApi.openPoint(e.lngLat.lat, e.lngLat.lng));
+
+  setupSheet(
+    document.getElementById('spot-panel') as HTMLDivElement,
+    document.getElementById('sheet-grip') as HTMLDivElement,
+  );
 
   // D12 single time state: selectable instants start as the raster frame
   // times; the 8-day spot series extends them once it loads (the timeline

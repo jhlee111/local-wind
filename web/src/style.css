@@ -458,17 +458,114 @@ body,
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
 }
 
-/* mobile: the timeline bar spans the full width — lift the corner chrome
-   above it (left: credit, right: legend chip). Placed last so these win
-   over the base #legend-corner / #credit declarations above. */
+#sheet-grip {
+  display: none;
+}
+
+/* ---- mobile layout (D13): timeline hidden, spot panel = bottom sheet ----
+   Placed last so these win over the base declarations (same specificity). */
 @media (max-width: 767px) {
+  /* the week table is the mobile time navigator — no separate timeline */
+  #panel {
+    display: none;
+  }
+
   #legend-corner {
-    bottom: 112px;
+    bottom: 26px;
   }
 
   #credit {
     left: 8px;
     right: auto;
-    bottom: 112px;
+    bottom: 26px;
+  }
+
+  #spot-panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    border-radius: 16px 16px 0 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: min(330px, 50vh);
+    transition: height 0.22s ease-out;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  #spot-panel.sheet-dragging {
+    transition: none;
+  }
+
+  #spot-panel.sheet-peek {
+    height: 88px;
+  }
+
+  #spot-panel.sheet-half {
+    height: min(330px, 50vh);
+  }
+
+  #spot-panel.sheet-full {
+    height: 86vh;
+  }
+
+  #sheet-grip {
+    display: block;
+    flex: none;
+    padding: 6px 0 10px;
+    margin: -12px -14px 0; /* full-width touch target inside panel padding */
+    cursor: grab;
+    touch-action: none;
+  }
+
+  #sheet-grip::before {
+    content: '';
+    display: block;
+    width: 42px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 2px;
+    background: rgba(232, 237, 246, 0.35);
+  }
+
+  /* mobile content order: header → table (time nav) → chart (full only) */
+  #sp-table {
+    order: 1;
+    flex: none;
+    border-top: none;
+  }
+
+  #sp-chart-wrap {
+    order: 2;
+    margin-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 8px;
+  }
+
+  #sp-legend {
+    order: 3;
+  }
+
+  .sheet-peek #sp-table,
+  .sheet-peek #sp-chart-wrap,
+  .sheet-peek #sp-legend {
+    display: none;
+  }
+
+  .sheet-half #sp-chart-wrap,
+  .sheet-half #sp-legend {
+    display: none;
+  }
+
+  /* ad-hoc points have no week table (until UX-5) — half shows their
+     chart instead of an empty sheet */
+  .sheet-half:has(#sp-table[hidden]) #sp-chart-wrap {
+    display: block;
+  }
+
+  .sheet-half:has(#sp-table[hidden]) #sp-legend {
+    display: flex;
   }
 }
