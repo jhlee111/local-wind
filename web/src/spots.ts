@@ -60,13 +60,17 @@ const W = 380;
 const H = 190;
 const M = { l: 30, r: 10, t: 26, b: 22 };
 
+export interface SpotsApi {
+  /** Open the panel for an arbitrary map point (M2.5a click-anywhere). */
+  openPoint: (lat: number, lon: number) => void;
+}
+
 export function setupSpots(
   map: maplibregl.Map,
   manifest: ManifestLike,
   getTexture: (i: number) => Promise<TextureData>,
-): void {
+): SpotsApi {
   const spots = manifest.spots ?? [];
-  if (spots.length === 0) return;
 
   const panel = document.getElementById('spot-panel') as HTMLDivElement;
   const nameEl = document.getElementById('sp-name') as HTMLDivElement;
@@ -74,8 +78,11 @@ export function setupSpots(
   const chart = document.getElementById('sp-chart') as unknown as SVGSVGElement;
   const tooltip = document.getElementById('sp-tooltip') as HTMLDivElement;
   const obsLabel = document.getElementById('sp-obs-label') as HTMLSpanElement;
+  const obsLegendItem = obsLabel.parentElement as HTMLSpanElement;
+  let pointMarker: maplibregl.Marker | null = null;
   (document.getElementById('sp-close') as HTMLButtonElement).onclick = () => {
     panel.hidden = true;
+    pointMarker?.remove();
   };
 
   let obsCache: ObsJson | null | undefined;
@@ -128,9 +135,11 @@ export function setupSpots(
   }
 
   async function openSpot(spot: Spot): Promise<void> {
+    if (spot.id !== 'point') pointMarker?.remove();
     panel.hidden = false;
     nameEl.textContent = spot.name;
     nowEl.textContent = 'loading…';
+    obsLegendItem.style.display = spot.obs ? '' : 'none';
     obsLabel.textContent = spot.obs
       ? `obs (${spot.obs.replace(/^ndbc_/, '').toUpperCase()})`
       : 'obs';
@@ -172,10 +181,33 @@ export function setupSpots(
         (last.gust != null ? ` (g ${last.gust.toFixed(0)})` : '') +
         (last.dir != null ? ` @ ${Math.round(last.dir)}°` : '') +
         ` · ${fmtTime(last.t)}`
-      : 'no recent observation';
+      : spot.id === 'point'
+        ? 'HRRR 3 km grid · interpolated (no station)' // D10: honest resolution label
+        : 'no recent observation';
 
-    render(chart, tooltip, obsPts, fcst, now);
+    // ad-hoc points have no obs history — don't waste 2/3 of the chart on
+    // an empty past window
+    render(chart, tooltip, obsPts, fcst, now, obsPts.length > 0 ? PAST_H : 3);
   }
+
+  function openPoint(lat: number, lon: number): void {
+    const [w, s, e, n] = manifest.bounds;
+    if (lat < s || lat > n || lon < w || lon > e) return; // outside data area
+    if (!pointMarker) {
+      const el = document.createElement('div');
+      el.className = 'point-marker';
+      pointMarker = new maplibregl.Marker({ element: el });
+    }
+    pointMarker.setLngLat([lon, lat]).addTo(map);
+    void openSpot({
+      id: 'point',
+      name: `${lat.toFixed(3)}, ${lon.toFixed(3)}`,
+      lat,
+      lon,
+    });
+  }
+
+  return { openPoint };
 }
 
 /** Nearest-pixel U/V read from an RG-encoded raster (bake.py convention). */
@@ -232,8 +264,9 @@ function render(
   obsPts: Pt[],
   fcst: Pt[],
   now: number,
+  pastH: number = PAST_H,
 ): void {
-  const t0 = now - PAST_H * 3_600_000;
+  const t0 = now - pastH * 3_600_000;
   const t1 = Math.max(fcst[fcst.length - 1]?.t ?? now, now + 6 * 3_600_000);
   const maxV = Math.max(
     10,

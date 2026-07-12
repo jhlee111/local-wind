@@ -95,6 +95,15 @@ body,
   transform: scale(1.25);
 }
 
+.point-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(53, 131, 204, 0.35);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
 #spot-panel {
   position: absolute;
   top: 14px;

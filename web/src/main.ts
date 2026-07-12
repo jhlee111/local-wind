@@ -148,7 +148,9 @@ async function init(): Promise<void> {
     frameLabel.textContent = `${local} · HRRR ${manifest.run.slice(11, 13)}Z f${fxx}`;
   }
 
-  setupSpots(map, manifest, texture);
+  const spotsApi = setupSpots(map, manifest, texture);
+  // click-anywhere point forecast (M2.5a) — maplibre suppresses click after drag
+  map.on('click', (e) => spotsApi.openPoint(e.lngLat.lat, e.lngLat.lng));
 
   slider.max = String(manifest.frames.length - 1);
   slider.addEventListener('input', () => void setFrame(Number(slider.value)));
@@ -156,6 +158,21 @@ async function init(): Promise<void> {
   // First render must NOT depend on the basemap: deck.gl renders on its own,
   // and 'load' never fires if the basemap host is blocked/unreachable. Fire on
   // whichever comes first — already-loaded, load, style.load, or a timeout.
+  // The map can be constructed before the async-injected CSS gives #map its
+  // size; if no resize observation fires afterwards, the canvas sticks at
+  // maplibre's 400x300 default. A one-shot resize can still race the CSS —
+  // poll briefly until the canvas matches its container, then stop.
+  const sizePoll = setInterval(() => {
+    const el = map.getContainer();
+    const canvas = map.getCanvas();
+    if (el.clientWidth > 0 &&
+        (canvas.clientWidth !== el.clientWidth ||
+         canvas.clientHeight !== el.clientHeight)) {
+      map.resize();
+    }
+  }, 250);
+  setTimeout(() => clearInterval(sizePoll), 10_000);
+
   let started = false;
   const start = () => {
     if (started) return;
