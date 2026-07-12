@@ -18,8 +18,12 @@ from .config import BBOX, CACHE_DIR, CROP_MARGIN
 SEARCH_UV10 = ":[UV]GRD:10 m above ground:"
 
 
-def find_latest_run(max_lookback_hours: int = 6) -> datetime:
+def find_latest_run(max_lookback_hours: int = 6, probe_fxx: int = 1) -> datetime:
     """Most recent HRRR cycle whose files exist on AWS (runs lag ~1 h).
+
+    probe_fxx: forecast hour that must already be published — HRRR posts
+    frames sequentially over ~1 h, so callers needing f00..fNN should probe
+    their LAST frame or the newest cycle may be picked half-baked.
 
     Returns a NAIVE datetime in UTC — Herbie rejects tz-aware timestamps
     ("Cannot compare tz-naive and tz-aware timestamps").
@@ -29,7 +33,7 @@ def find_latest_run(max_lookback_hours: int = 6) -> datetime:
     for back in range(1, max_lookback_hours + 1):
         run = now - timedelta(hours=back)
         try:
-            h = Herbie(run, model="hrrr", product="sfc", fxx=1,
+            h = Herbie(run, model="hrrr", product="sfc", fxx=probe_fxx,
                        save_dir=CACHE_DIR, verbose=False)
             if h.grib is not None:
                 return run

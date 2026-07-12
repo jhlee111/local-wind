@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    run = find_latest_run()
+    run = find_latest_run(probe_fxx=args.frames - 1)
     print(f"HRRR run: {run:%Y-%m-%d %H}Z, baking f00..f{args.frames - 1:02d} → {out_dir}")
 
     grid_lon, grid_lat = target_grid()

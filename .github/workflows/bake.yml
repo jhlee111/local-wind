@@ -1,20 +1,24 @@
-# Bake HRRR wind data for the web map.
-#
-# M1 stub: manual trigger only, output as artifact.
-# M2 TODO: enable the hourly cron + deploy web/dist + data to Cloudflare Pages
-#          (needs CF account + CLOUDFLARE_API_TOKEN secret; see docs/PLAN.md D4).
+# Hourly: bake latest HRRR wind rasters, build the site, deploy to
+# Cloudflare Pages (deploy step skips itself until the CF secrets exist:
+# CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID → set via `gh secret set`).
 
 name: bake-wind
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: "20 * * * *"  # hourly, ~20 min past (HRRR availability lag ~1 h)
+  schedule:
+    - cron: "20 * * * *" # HRRR run H publishes f00..f12 by ~H+1:15 → :20 picks H-1 reliably
+
+concurrency:
+  group: bake
+  cancel-in-progress: true
 
 jobs:
   bake:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +27,27 @@ jobs:
       - name: Bake wind rasters from latest HRRR
         run: uv run --project pipeline python -m localwind.bake --frames 13
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build site
+        run: |
+          npm --prefix web ci
+          npm --prefix web run build
+
+      - name: Deploy to Cloudflare Pages
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web/dist --project-name=local-wind --branch=main
+
+      - name: Upload data artifact (debug/fallback)
+        uses: actions/upload-artifact@v4
         with:
           name: wind-data
           path: web/public/data/

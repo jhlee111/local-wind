@@ -1,0 +1,40 @@
+# Hourly: collect wind observations (KTOA METAR, NDBC AGXC1 + 46025) and
+# commit the monthly parquet to main. This is the M4 statistical-correction
+# training set — gaps are unrecoverable beyond the feeds' backlog windows,
+# so this runs even while the rest of the project is under construction.
+
+name: collect-obs
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "7 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: obs
+
+jobs:
+  obs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Collect observations
+        # exit 2 = some sources failed but others succeeded — still commit those
+        run: uv run --project pipeline python -m localwind.obs || [ $? -eq 2 ]
+
+      - name: Commit observations
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/obs
+          git diff --cached --quiet && exit 0
+          git commit -m "obs: $(date -u +'%Y-%m-%d %H:%MZ')"
+          git pull --rebase origin main
+          git push origin main

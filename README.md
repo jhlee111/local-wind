@@ -2,6 +2,8 @@
 
 Free, self-hosted windy-style wind map for the South Bay coast (Torrance / San Pedro / Palos Verdes, SoCal). HRRR-based, terrain-aware later. For windsurf / kite / wing foil.
 
+**Live: <https://local-wind.pages.dev>**
+
 - Plan & decisions: [docs/PLAN.md](docs/PLAN.md)
 - Research (fact-checked): [docs/research-wind-forecast.md](docs/research-wind-forecast.md)
 
