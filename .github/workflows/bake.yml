@@ -27,6 +27,9 @@ jobs:
       - name: Bake wind rasters from latest HRRR
         run: uv run --project pipeline python -m localwind.bake --frames 13
 
+      - name: Export recent observations (spot panel)
+        run: uv run --project pipeline python -m localwind.export_obs
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22

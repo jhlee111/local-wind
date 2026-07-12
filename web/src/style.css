@@ -80,6 +80,121 @@ body,
   accent-color: #4da3ff;
 }
 
+.spot-marker {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ff4d5e;
+  border: 2.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+
+.spot-marker:hover {
+  transform: scale(1.25);
+}
+
+#spot-panel {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 11;
+  width: min(420px, calc(100vw - 28px));
+  padding: 12px 14px 10px;
+  border-radius: 12px;
+  background: rgba(12, 16, 24, 0.85);
+  backdrop-filter: blur(8px);
+  color: #e8edf6;
+  font: 13px/1.45 system-ui, -apple-system, sans-serif;
+}
+
+#sp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+
+#sp-name {
+  font-weight: 650;
+  font-size: 14px;
+}
+
+#sp-now {
+  font-size: 11.5px;
+  color: rgba(232, 237, 246, 0.75);
+  font-variant-numeric: tabular-nums;
+}
+
+#sp-close {
+  border: 0;
+  background: none;
+  color: rgba(232, 237, 246, 0.7);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+#sp-close:hover {
+  color: #fff;
+}
+
+#sp-chart-wrap {
+  position: relative;
+}
+
+#sp-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+#sp-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(8, 11, 18, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  z-index: 5;
+}
+
+#sp-legend {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(232, 237, 246, 0.8);
+}
+
+#sp-legend .sw {
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+#sw-obs {
+  background: #c9821a;
+}
+
+#sw-fcst {
+  background: #3583cc;
+}
+
+.sp-hint {
+  margin-left: auto;
+  color: rgba(232, 237, 246, 0.55);
+}
+
 #credit {
   position: absolute;
   right: 6px;

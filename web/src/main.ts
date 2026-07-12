@@ -15,6 +15,7 @@ import {
   WIND_PALETTE,
   legendGradient,
 } from './palette.ts';
+import { setupSpots, type Spot } from './spots.ts';
 
 interface Frame {
   fxx: number;
@@ -28,6 +29,7 @@ interface Manifest {
   run: string;
   model: string;
   frames: Frame[];
+  spots?: Spot[];
 }
 
 const frameLabel = document.getElementById('frame-label') as HTMLDivElement;
@@ -145,6 +147,8 @@ async function init(): Promise<void> {
     const fxx = String(frame.fxx).padStart(2, '0');
     frameLabel.textContent = `${local} · HRRR ${manifest.run.slice(11, 13)}Z f${fxx}`;
   }
+
+  setupSpots(map, manifest, texture);
 
   slider.max = String(manifest.frames.length - 1);
   slider.addEventListener('input', () => void setFrame(Number(slider.value)));

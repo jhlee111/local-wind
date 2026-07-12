@@ -46,10 +46,10 @@ def main(argv: list[str] | None = None) -> int:
     ax.barbs(lon[::step, ::step], lat[::step, ::step],
              u_kt[::step, ::step], v_kt[::step, ::step],
              length=5, linewidth=0.6, color="white")
-    for name, (slat, slon) in SPOTS.items():
-        ax.plot(slon, slat, "r^", markersize=9)
-        ax.annotate(name, (slon, slat), textcoords="offset points", xytext=(6, 4),
-                    color="red", fontsize=9, fontweight="bold")
+    for name, spot in SPOTS.items():
+        ax.plot(spot["lon"], spot["lat"], "r^", markersize=9)
+        ax.annotate(name, (spot["lon"], spot["lat"]), textcoords="offset points",
+                    xytext=(6, 4), color="red", fontsize=9, fontweight="bold")
     fig.colorbar(pm, ax=ax, label="10 m wind speed (kt)", shrink=0.85)
     ax.set_title(
         f"HRRR 10 m wind — run {run:%Y-%m-%d %H}Z f{args.fxx:02d}\n"

@@ -16,6 +16,24 @@
       <div id="frame-label">loading wind data…</div>
       <input id="frame-slider" type="range" min="0" max="0" value="0" step="1" />
     </div>
+    <div id="spot-panel" hidden>
+      <div id="sp-head">
+        <div>
+          <div id="sp-name">Spot</div>
+          <div id="sp-now">—</div>
+        </div>
+        <button id="sp-close" aria-label="close panel">×</button>
+      </div>
+      <div id="sp-chart-wrap">
+        <svg id="sp-chart" viewBox="0 0 380 190" role="img" aria-label="wind speed time series"></svg>
+        <div id="sp-tooltip" hidden></div>
+      </div>
+      <div id="sp-legend">
+        <span><i class="sw" id="sw-obs"></i><span id="sp-obs-label">obs</span></span>
+        <span><i class="sw" id="sw-fcst"></i>HRRR forecast</span>
+        <span class="sp-hint">dots = gusts · kt</span>
+      </div>
+    </div>
     <div id="credit">NOAA HRRR · © OpenFreeMap · OpenStreetMap</div>
     <script type="module" src="/src/main.ts"></script>
   </body>

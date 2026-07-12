@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image
 from scipy.interpolate import griddata
 
-from .config import BBOX, TARGET_RES_DEG, UNSCALE, WEB_DATA_DIR
+from .config import BBOX, SPOTS, TARGET_RES_DEG, UNSCALE, WEB_DATA_DIR
 from .fetch import fetch_uv10, find_latest_run, lon_to_pm180
 
 
@@ -88,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         "run": run.strftime("%Y-%m-%dT%H:00:00Z"),
         "model": "hrrr",
         "frames": frames,
+        "spots": [{"id": sid, **spec} for sid, spec in SPOTS.items()],
     }
     (out_dir / "wind.json").write_text(json.dumps(manifest, indent=1))
     print(f"wrote {out_dir / 'wind.json'} ({len(frames)} frames)")

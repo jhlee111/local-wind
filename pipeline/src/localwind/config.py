@@ -17,8 +17,16 @@ TARGET_RES_DEG = 0.01
 # so animation brightness is comparable between hours.
 UNSCALE = 40.0
 
-# Spot markers / future point forecasts & validation anchors (lat, lon).
-SPOTS = {"cabrillo": (33.708, -118.286)}
+# Spot markers / point forecasts & validation anchors. "obs" names the
+# source id in data/obs (see obs.py) whose sensor best represents the spot.
+SPOTS = {
+    "cabrillo": {
+        "name": "Cabrillo Beach",
+        "lat": 33.708,
+        "lon": -118.286,
+        "obs": "ndbc_agxc1",  # Angels Gate — harbor entrance, nearest anemometer
+    },
+}
 
 PIPELINE_ROOT = Path(__file__).resolve().parents[2]  # pipeline/
 REPO_ROOT = PIPELINE_ROOT.parent
