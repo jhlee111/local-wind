@@ -17,9 +17,9 @@
 | D6 | **관측 수집기(collector)를 Phase 1부터 상시 가동** | thermal 오차의 실질 해법 = 스팟별 통계보정(MOS) — 학습 데이터를 미리 축적 | ✅ 확정 |
 | D7 | Python 환경: **uv** (P0–P2) → **pixi/conda 또는 Docker** (P3, WindNinja C++·GDAL 필요 시점) | P0–2 의존성은 전부 wheel; WindNinja는 conda-forge/Docker | ✅ 확정 |
 | D8 | 브라우저 데이터 포맷: **PNG-encoded U/V raster** (R=U, G=V, unscale ±40 m/s 고정) | WeatherLayers/webgl-wind 표준 방식, 컴팩트. B폴백 시 grib2json | ✅ 확정 (2026-07-12 구현·렌더 검증) |
-| D9 | **장기(>48h) 예보는 지도 래스터가 아니라 스팟별 point-series JSON**으로. 지도 래스터는 단기 HRRR(≤48h)만 | 10일치 래스터는 ~240프레임(낭비); 스팟 테이블은 몇 KB JSON으로 동일 UX. 임의 지점 장기예보는 Open-Meteo 클라이언트 fetch(CORS 허용·무료) 옵션 | ✅ 확정 (2026-07-13) |
-| D10 | **클릭값 정직성**: 포인트 값 옆에 소스·해상도 표시(예: "HRRR 3 km · interpolated"). 보간의 매끈함이 해상도 착시를 만들므로 명시 | windy.app는 GFS ~25km 보간값을 라벨 없이 노출 — 모델 유효 해상도는 격자의 4~7배라는 사실을 숨기지 않는 것이 차별점 | ✅ 확정 (2026-07-13) |
-| D11 | 시간 해상도: **1시간 기본**(HRRR native), 장기 구간은 3h(NBM/GFS), 15분 subhourly(`product="subh"`)는 nowcast 옵션 | windy.app 무료는 3h(1h는 유료) — 우리는 1h가 공짜. HRRR subh로 해풍 onset 표현력 여지 | ✅ 확정 (2026-07-13) |
+| D9 | **장기(>48h) 예보는 지도 래스터가 아니라 스팟별 point-series JSON**으로. 지도 래스터는 단기 HRRR(≤48h)만 | 10일치 래스터는 ~240프레임(낭비); 스팟 테이블은 몇 KB JSON으로 동일 UX. 임의 지점 장기예보는 Open-Meteo 클라이언트 fetch(CORS 허용·무료) 옵션 | ✅ 확정 (2026-07-12) |
+| D10 | **클릭값 정직성**: 포인트 값 옆에 소스·해상도 표시(예: "HRRR 3 km · interpolated"). 보간의 매끈함이 해상도 착시를 만들므로 명시 | windy.app는 GFS ~25km 보간값을 라벨 없이 노출 — 모델 유효 해상도는 격자의 4~7배라는 사실을 숨기지 않는 것이 차별점 | ✅ 확정 (2026-07-12) |
+| D11 | 시간 해상도: **1시간 기본**(HRRR native), 장기 구간은 3h(NBM/GFS), 15분 subhourly(`product="subh"`)는 nowcast 옵션 | windy.app 무료는 3h(1h는 유료) — 우리는 1h가 공짜. HRRR subh로 해풍 onset 표현력 여지 | ✅ 확정 (2026-07-12) |
 
 ## 도메인 파라미터 (초안 — M1에서 조정)
 
@@ -35,8 +35,8 @@
 - **M1** ✅ (2026-07-12): `pipeline/` — Herbie로 South Bay bbox HRRR 10m U/V 서브셋 → quiver/barbs 정적 PNG 1장. **DoD**: 명령 한 번에 최신 HRRR로 바람장 PNG 생성 → `uv run --project pipeline python -m localwind.plot_once` 동작 확인. bake(13프레임) + 웹 파티클 렌더·시간 슬라이더까지 로컬 검증 완료 (M2의 로컬 부분 선행 달성)
 - **M1.5** 수집기 ✅ (2026-07-12): `localwind.obs` — KTOA METAR + **NDBC AGXC1**(Angels Gate, LA 하버 입구 — Cabrillo 바로 앞) + NDBC 46025 → `data/obs/YYYY-MM.parquet` dedup 병합. ⚠️ 당초 계획의 CO-OPS 9410660은 **바람 센서 없음**(기압·수위만)이 확인되어 AGXC1로 대체. **잔여 DoD**: 상시 스케줄 가동(cron 3일 무결) — M2 인프라(Actions cron)에서 활성화
 - **M2** 진행중 (2026-07-12 인프라 완료): 공개 리포 [github.com/jhlee111/local-wind](https://github.com/jhlee111/local-wind) + **라이브 사이트 <https://local-wind.pages.dev>** (wrangler 첫 배포 ✅). Actions cron 활성화 — bake-wind(매시 :20, bake→build→CF 배포) + collect-obs(매시 :07, 관측→main 커밋). **자동 배포 검증 완료(2026-07-12 08Z)**: CF 시크릿 설정 후 CI에서 bake→build→CF Pages 배포 성공. (트러블슈팅 기록: 최초 실패는 `CLOUDFLARE_ACCOUNT_ID` 값 오류 — CF 에러 7003 "Could not route"는 계정 ID 문제, 토큰 문제 아님. wrangler whoami의 32-hex ID로 교정.) 이제 매시 :20 자동 갱신. **속도 컬러 오버레이 ✅ (2026-07-12)**: WeatherLayers RasterLayer(파티클 아래) + 노트 기준 범례, 팔레트는 `web/src/palette.ts` 단일 소스(세일링 임계값 스톱, 명도 단조증가 = CVD 안전). 로컬·프로덕션 렌더 검증. **스팟 패널 ✅ (2026-07-12)**: Cabrillo 마커(pointerup+키보드 — click은 맵 드래그에 삼켜짐) → 24h 관측(AGXC1, 거스트 점) vs 13h HRRR 예보(클라이언트에서 U/V 래스터 샘플링) 차트, 방향 화살표·now라인·크로스헤어 툴팁, 시리즈 색은 dataviz validator 통과쌍(#c9821a/#3583cc). `localwind.export_obs`가 bake 워크플로에서 obs_recent.json 생성. **→ M2 완료.**
-- **M2.5 — 포인트 예보 UX** (windy.app 클릭 UX 벤치마크, 2026-07-13 계획):
-  - **M2.5a 클릭-anywhere 패널**: 지도 임의 지점 클릭 → 기존 `sampleUV()` 재사용해 같은 패널(coords 제목, 예보만·관측 없음, D10 해상도 라벨, 임시 포인트 마커). bbox 밖 클릭은 무시. **DoD**: 바다·육지 아무 데나 클릭해 13h 예보 차트 표시
+- **M2.5 — 포인트 예보 UX** (windy.app 클릭 UX 벤치마크, 2026-07-12 계획):
+  - **M2.5a 클릭-anywhere 패널 ✅ (2026-07-12)**: 지도 임의 지점 클릭 → `sampleUV()` 재사용 패널(coords 제목, 예보만, D10 라벨 "HRRR 3 km grid · interpolated (no station)", 임시 포인트 마커, bbox 밖 무시, 관측 범례 자동 숨김+과거창 3h 축소). 사용자 실브라우저 검증 + 라이브 배포 완료
   - **M2.5b 스팟 10일 테이블**: bake 시 스팟별 point-series JSON(HRRR 48h·1h + NBM 또는 GFS 3h·~7일, D9) → 패널에 시간×(풍속/거스트/방향) 매트릭스, 세기 셀 색칠은 `palette.ts` 재사용, windy 스타일 일자 헤더. **DoD**: Cabrillo 패널에서 오늘~+7일 스크롤 테이블
 - 다음: M2.5 → M3(WindNinja 지형 토글) 또는 M4 조기 착수(관측 데이터가 이미 쌓이는 중이므로 2-3주 후 bias 분석 가능)
 - **M3**: WindNinja(mass solver, HRRR init, 3DEP 10m + NLCD) ~200m 레이어 토글. **DoD**: 동일 시각 HRRR raw vs 다운스케일 비교 화면
@@ -56,6 +56,8 @@
 - HRRR Lambert 격자는 위경도에 회전돼 있어 인덱스 크롭은 회전된 상위집합 — 정확한 bbox는 bake의 regrid(griddata)에서 잘림.
 - basemap(OpenFreeMap) 로드 실패/차단 시에도 바람 레이어가 뜨도록 fallback 인라인 스타일 + 6s 타임아웃 가드 (`web/src/main.ts`). **주의**: 첫 렌더를 map `'load'`에만 걸면 basemap 차단 시 영영 안 뜸 → `loaded()`/`load`/`style.load`/timeout 중 먼저 오는 것으로 트리거하고, `buildLegend()`는 fetch 이전에, manifest fetch엔 10s timeout. deck.gl은 basemap과 독립적으로 렌더됨.
 - 팔레트는 연속 필드라 dataviz의 카테고리컬 validator 부적용 — 대신 명도 단조증가로 magnitude 가독성(CVD) 확보. 범례는 필수(구현됨).
+- **캔버스 400×300 고착 레이스**: vite dev의 비동기 CSS 주입 때문에 Map 생성 시점에 `#map`이 0-size로 측정될 수 있고, 이후 resize 관찰이 안 오는 환경에선 maplibre 기본 400×300에 고착. 일회성 `map.resize()`도 같은 레이스에 짐 → **캔버스=컨테이너 일치까지 250ms 폴링(10s 한도)** (`web/src/main.ts` sizePoll).
+- 마커 클릭은 `click` 이벤트 대신 **pointerdown/up + 이동 가드** — 맵 드래그 핸들러가 click을 삼키는 경로(터치·자동화 포함)에서도 동작 (`web/src/spots.ts`).
 
 ## 하지 않는 것
 
