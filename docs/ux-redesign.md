@@ -79,6 +79,16 @@
 
 리스크/메모: 시트 드래그는 라이브러리 없이 CSS scroll-snap 또는 ~50줄 포인터 핸들러로(의존성 억제). 타임라인 팔레트 스트립 데이터는 이미 있는 spots_series 재사용(기본 스팟=Cabrillo, 임의지점 선택 시 그 지점 시리즈). 접근성: 커스텀 스크러버에 ARIA slider 롤 + 키보드 ←/→, 테이블 셀은 button화.
 
+## 구현 노트 (UX-1 착수용 — 새 세션이 바로 시작할 수 있게)
+
+- **시간 상태 스토어**: `web/src/state.ts` 신규 — `{ times: number[]; selectedIdx: number }` + `subscribe(fn)/select(idx)` 미니 pub/sub (라이브러리 금지). `times` = manifest frames(1h, ≤18h) ∪ spots_series 3h 시각(전체 8일). 맵 프레임 매핑은 `T → 가장 가까운 frame(≤18h)`, 범위 밖이면 마지막 프레임 유지 + "지도는 +18h까지" 뱃지.
+- **UX-1 변경 파일**: `main.ts`(슬라이더 input·setFrame 호출을 store 구독으로 전환), `spots.ts`(차트/테이블 렌더가 store의 T를 읽도록 — 클릭 발행은 UX-3에서). 시각 결과 동일해야 함(리팩터 회귀 없음이 DoD).
+- **UX-2**: `timeline.ts` 신규(스크러버 DOM, ARIA `role=slider`+`aria-valuetext`, ←/→ 키), `#panel` 마크업 교체, 팔레트 스트립은 spots_series(기본 Cabrillo)로 `legendGradient()`류 헬퍼 재사용. 범례는 `#legend`를 우하단 코너로 이동+접기.
+- **UX-3**: `renderWeekTable` 셀을 `<button>`화 → `store.select()`, 날짜 헤더 클릭 → 차트 창 = 그 로컬 하루. `render()`에 T-커서 파라미터 추가.
+- **UX-4**: `sheet.ts` 신규(포인터 드래그 ~50줄, peek/half/full snap), `@media (max-width: 767px)`에서 `#spot-panel`을 시트로. 모바일에선 타임라인 바 숨김(테이블 = 시간 내비).
+- **UX-5**: `openmeteo.ts` 신규 — `api.open-meteo.com/v1/forecast?latitude=&longitude=&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&forecast_days=8&wind_speed_unit=ms&timezone=UTC` → `SeriesPt[]` 변환 후 `renderWeekTable` 재사용, 테이블에 "source: Open-Meteo" 라벨(D10). 이 단계에서 frontend-design 스킬 로드해 폴리시.
+- **검증 습관**: 각 단계마다 데스크톱 + 375px 프리뷰 스크린샷, 배포는 push→CI(bake-wind) 경로.
+
 ## 하지 않기로 한 것
 
 - 데스크톱에서도 하단 시트로 통일 — 화면이 넓은데 지도를 가릴 이유 없음. 데스크톱=우측 카드, 모바일=시트로 분기.
