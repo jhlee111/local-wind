@@ -339,6 +339,15 @@ body,
   color: rgba(232, 237, 246, 0.8);
 }
 
+#sp-chart-day {
+  font-weight: 650;
+  color: rgba(232, 237, 246, 0.9);
+}
+
+#sp-chart-day:empty {
+  display: none;
+}
+
 #sp-legend .sw {
   display: inline-block;
   width: 12px;
@@ -423,6 +432,15 @@ body,
    when both land on the same column */
 #sp-table td.sel-col {
   box-shadow: inset 0 0 0 1.5px #4da3ff;
+}
+
+/* every data-ms cell writes T on click/tap (UX-3) */
+#sp-table td[data-ms] {
+  cursor: pointer;
+}
+
+#sp-table td[data-ms]:hover {
+  filter: brightness(1.35);
 }
 
 #sp-table tr.dir span {

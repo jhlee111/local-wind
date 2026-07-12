@@ -1,11 +1,22 @@
-// Spot markers + the click-through panel: last 24 h of observed wind next
-// to the HRRR forecast, sampled client-side from the already-baked U/V
-// rasters (no extra pipeline product needed for the forecast series).
+// Spot markers + the click-through panel. The detail chart shows the local
+// day the selected time T falls in (master-detail with the week table: tap a
+// column → T moves → chart follows; past days become a verification view of
+// obs vs forecast). Spots draw the forecast from the baked 8-day point
+// series; ad-hoc map points still sample the U/V rasters client-side
+// (series for those arrives with Open-Meteo in UX-5).
 
 import maplibregl from 'maplibre-gl';
 import type { TextureData } from 'weatherlayers-gl';
 import { MS_TO_KT, colorForKt, inkFor } from './palette.ts';
-import { nearestIdx, selectedMs, subscribe } from './state.ts';
+import {
+  TZ,
+  dayKey,
+  localMidnightAtOrBefore,
+  nearestIdx,
+  selectTime,
+  selectedMs,
+  subscribe,
+} from './state.ts';
 
 export interface Spot {
   id: string;
@@ -54,8 +65,8 @@ export interface SeriesJson {
   spots: Record<string, { name: string; series: SeriesPt[] }>;
 }
 
-// Shared, memoized spots_series.json fetch — the panel (week table) and the
-// time store (8-day selectable range, main.ts) both read from it.
+// Shared, memoized spots_series.json fetch — the panel (week table + chart)
+// and the time store (8-day selectable range, main.ts) all read from it.
 let seriesPromise: Promise<SeriesJson | null> | undefined;
 export function loadSeries(): Promise<SeriesJson | null> {
   seriesPromise ??= fetch('/data/spots_series.json', {
@@ -79,7 +90,7 @@ const OBS_COLOR = '#c9821a';
 const FCST_COLOR = '#3583cc';
 
 const PAST_H = 24;
-const TZ = 'America/Los_Angeles';
+const HOUR = 3_600_000;
 
 // chart geometry in viewBox units (matches <svg viewBox="0 0 380 190">)
 const W = 380;
@@ -162,12 +173,29 @@ export function setupSpots(
 
   const tableEl = document.getElementById('sp-table') as HTMLDivElement;
 
-  // D12: the week table and chart cursor are views of the time store —
-  // while the panel is open they track T. (Column *clicks* publish back
-  // into the store in UX-3.)
+  // D12, write side: any cell (3 h step) or day header (that day's noon)
+  // moves the shared T. One delegated listener survives table re-renders.
+  tableEl.addEventListener('click', (ev) => {
+    const td = (ev.target as HTMLElement).closest('td[data-ms]');
+    if (td instanceof HTMLElement && td.dataset.ms) {
+      selectTime(Number(td.dataset.ms));
+    }
+  });
+
+  setupChartHover(chart, tooltip);
+
+  // D12, read side: while the panel is open the week table highlight, the
+  // chart T-cursor, and the chart's day window all track the store.
   let openSeries: SeriesPt[] = [];
   subscribe(() => {
     if (panel.hidden) return;
+    if (chartData && !chartData.isPoint) {
+      const key = dayKey(selectedMs());
+      if (key !== chartDayKey) {
+        chartDayKey = key;
+        renderChart();
+      }
+    }
     positionChartCursor();
     if (openSeries.length === 0) return;
     const scroll = tableEl.scrollLeft; // innerHTML swap must not reset it
@@ -188,8 +216,7 @@ export function setupSpots(
     tooltip.hidden = true;
     tableEl.hidden = true;
 
-    const [textures, obs, seriesJson] = await Promise.all([
-      Promise.all(manifest.frames.map((_f, i) => getTexture(i))),
+    const [obs, seriesJson] = await Promise.all([
       getObs(),
       spot.id === 'point' ? Promise.resolve(null) : loadSeries(),
     ]);
@@ -200,39 +227,46 @@ export function setupSpots(
       renderWeekTable(tableEl, weekSeries);
       tableEl.hidden = false;
     }
-    // model gust lives in the point series (rasters only carry U/V) —
-    // graft it onto the chart's forecast points by valid time
-    const gustByTime = new Map(
-      weekSeries.map((p) => [Date.parse(p.t), p.gust] as const),
-    );
 
-    const fcst: Pt[] = manifest.frames.map((f, i) => {
-      const { u, v } = sampleUV(
-        textures[i], manifest.bounds, manifest.unscale, spot.lon, spot.lat,
+    // Forecast source: the baked 8-day point series when we have it (drives
+    // the day-window chart across the whole week); otherwise sample the U/V
+    // rasters (ad-hoc points, or a spot whose series failed to load).
+    let fcstAll: Pt[];
+    if (weekSeries.length > 0) {
+      fcstAll = weekSeries.map((p) => ({
+        t: Date.parse(p.t),
+        spd: p.spd * MS_TO_KT,
+        dir: p.dir,
+        gust: p.gust != null ? p.gust * MS_TO_KT : null,
+      }));
+    } else {
+      const textures = await Promise.all(
+        manifest.frames.map((_f, i) => getTexture(i)),
       );
-      const t = Date.parse(f.validTime);
-      const gustMs = gustByTime.get(t);
-      return {
-        t,
-        spd: Math.hypot(u, v) * MS_TO_KT,
-        dir: dirFrom(u, v),
-        gust: gustMs != null ? gustMs * MS_TO_KT : null,
-      };
-    });
+      fcstAll = manifest.frames.map((f, i) => {
+        const { u, v } = sampleUV(
+          textures[i], manifest.bounds, manifest.unscale, spot.lon, spot.lat,
+        );
+        return {
+          t: Date.parse(f.validTime),
+          spd: Math.hypot(u, v) * MS_TO_KT,
+          dir: dirFrom(u, v),
+          gust: null,
+        };
+      });
+    }
 
-    const now = Date.now();
     const raw: ObsPoint[] = spot.obs ? (obs?.sources[spot.obs] ?? []) : [];
-    const obsPts: Pt[] = raw
+    const obsAll: Pt[] = raw
       .filter((p) => p.spd != null)
       .map((p) => ({
         t: Date.parse(p.t),
         spd: (p.spd as number) * MS_TO_KT,
         dir: p.dir,
         gust: p.gust != null ? p.gust * MS_TO_KT : null,
-      }))
-      .filter((p) => p.t >= now - PAST_H * 3_600_000 && p.t <= now);
+      }));
 
-    const last = obsPts[obsPts.length - 1];
+    const last = obsAll[obsAll.length - 1];
     nowEl.textContent = last
       ? `now ${last.spd.toFixed(1)} kt` +
         (last.gust != null ? ` (g ${last.gust.toFixed(0)})` : '') +
@@ -242,9 +276,15 @@ export function setupSpots(
         ? 'HRRR 3 km grid · interpolated (no station)' // D10: honest resolution label
         : 'no recent observation';
 
-    // ad-hoc points have no obs history — don't waste 2/3 of the chart on
-    // an empty past window
-    render(chart, tooltip, obsPts, fcst, now, obsPts.length > 0 ? PAST_H : 3);
+    chartData = {
+      svg: chart,
+      tooltip,
+      obsAll,
+      fcstAll,
+      isPoint: spot.id === 'point' || weekSeries.length === 0,
+    };
+    chartDayKey = dayKey(selectedMs());
+    renderChart();
   }
 
   function openPoint(lat: number, lon: number): void {
@@ -315,6 +355,68 @@ function localHour(t: number): number {
   );
 }
 
+function fmtChartDay(ms: number): string {
+  return new Date(ms)
+    .toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'numeric',
+      day: 'numeric',
+      timeZone: TZ,
+    })
+    .replace(',', '')
+    .toUpperCase();
+}
+
+// ---- day-window chart (D12 master-detail) ----
+
+interface ChartData {
+  svg: SVGSVGElement;
+  tooltip: HTMLDivElement;
+  obsAll: Pt[];
+  fcstAll: Pt[];
+  /** Fixed legacy window (no 8-day series): ad-hoc points until UX-5. */
+  isPoint: boolean;
+}
+
+let chartData: ChartData | null = null;
+let chartDayKey: string | null = null;
+
+/** (Re)draw the chart for the current selection's local day. */
+function renderChart(): void {
+  if (!chartData) return;
+  const { svg, tooltip, obsAll, fcstAll, isPoint } = chartData;
+  const now = Date.now();
+
+  let t0: number;
+  let t1: number;
+  let dayLabel = '';
+  if (isPoint) {
+    // ad-hoc points have no obs history — don't waste 2/3 of the chart on
+    // an empty past window
+    const pastH = obsAll.length > 0 ? PAST_H : 3;
+    t0 = now - pastH * HOUR;
+    t1 = Math.max(fcstAll[fcstAll.length - 1]?.t ?? now, now + 6 * HOUR);
+  } else {
+    const dayStart = localMidnightAtOrBefore(selectedMs());
+    t0 = dayStart - 1.5 * HOUR;
+    t1 = dayStart + 25.5 * HOUR;
+    dayLabel = fmtChartDay(dayStart + 12 * HOUR);
+  }
+
+  const dayEl = document.getElementById('sp-chart-day');
+  if (dayEl) dayEl.textContent = dayLabel;
+  tooltip.hidden = true; // window changed under the pointer — stale text
+
+  render(
+    svg,
+    obsAll.filter((p) => p.t >= t0 && p.t <= t1),
+    fcstAll.filter((p) => p.t >= t0 && p.t <= t1),
+    now,
+    t0,
+    t1,
+  );
+}
+
 // Chart time window of the last render — lets the store subscription move
 // the T-cursor without a full chart rebuild (no listener churn).
 let chartWin: { svg: SVGSVGElement; t0: number; t1: number } | null = null;
@@ -338,14 +440,12 @@ function positionChartCursor(): void {
 
 function render(
   svg: SVGSVGElement,
-  tooltip: HTMLDivElement,
   obsPts: Pt[],
   fcst: Pt[],
   now: number,
-  pastH: number = PAST_H,
+  t0: number,
+  t1: number,
 ): void {
-  const t0 = now - pastH * 3_600_000;
-  const t1 = Math.max(fcst[fcst.length - 1]?.t ?? now, now + 6 * 3_600_000);
   const maxV = Math.max(
     10,
     ...obsPts.map((p) => Math.max(p.spd, p.gust ?? 0)),
@@ -360,8 +460,11 @@ function render(
 
   const parts: string[] = [];
 
+  // past shading up to `now`, clamped to the window (full for past days,
+  // none for future days)
+  const pastEnd = Math.min(Math.max(now, t0), t1);
   parts.push(
-    `<rect x="${M.l}" y="${M.t}" width="${(x(now) - M.l).toFixed(1)}" height="${H - M.t - M.b}" fill="rgba(255,255,255,0.04)"/>`,
+    `<rect x="${M.l}" y="${M.t}" width="${(x(pastEnd) - M.l).toFixed(1)}" height="${H - M.t - M.b}" fill="rgba(255,255,255,0.04)"/>`,
   );
 
   const yLabelStep = yMax > 30 ? 10 : 5;
@@ -377,7 +480,7 @@ function render(
     }
   }
 
-  for (let t = Math.ceil(t0 / 3_600_000) * 3_600_000; t <= t1; t += 3_600_000) {
+  for (let t = Math.ceil(t0 / HOUR) * HOUR; t <= t1; t += HOUR) {
     if (localHour(t) % 6 !== 0) continue;
     const xx = x(t).toFixed(1);
     parts.push(
@@ -386,9 +489,11 @@ function render(
     );
   }
 
-  parts.push(
-    `<line x1="${x(now).toFixed(1)}" x2="${x(now).toFixed(1)}" y1="${M.t - 4}" y2="${H - M.b}" stroke="rgba(255,255,255,0.4)" stroke-dasharray="3 3"/>`,
-  );
+  if (now >= t0 && now <= t1) {
+    parts.push(
+      `<line x1="${x(now).toFixed(1)}" x2="${x(now).toFixed(1)}" y1="${M.t - 4}" y2="${H - M.b}" stroke="rgba(255,255,255,0.4)" stroke-dasharray="3 3"/>`,
+    );
+  }
 
   if (obsPts.length > 0) {
     parts.push(
@@ -436,6 +541,7 @@ function render(
   }
 
   parts.push(
+    `<line id="sp-hover-cross" y1="${M.t}" y2="${H - M.b}" stroke="rgba(255,255,255,0.5)" visibility="hidden"/>`,
     `<line id="sp-tcursor" y1="${M.t - 4}" y2="${H - M.b}" stroke="#4da3ff" stroke-width="1.5" visibility="hidden"/>`,
   );
 
@@ -446,7 +552,7 @@ function render(
   chartWin = { svg, t0, t1 };
   positionChartCursor();
 
-  attachHover(svg, tooltip, obsPts, fcst, x, t0, t1);
+  hoverData = { obsPts, fcst, x, t0, t1 };
 }
 
 /** windy-style week matrix: 3 h columns × (hour / kt / gust / dir) rows. */
@@ -455,7 +561,7 @@ export function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
   const pts = series
     .map((p) => ({ ...p, ms: Date.parse(p.t) }))
     .filter((p) => new Date(p.ms).getUTCHours() % 3 === 0)
-    .filter((p) => p.ms >= now - 1.5 * 3_600_000);
+    .filter((p) => p.ms >= now - 1.5 * HOUR);
   if (pts.length === 0) {
     el.hidden = true;
     return;
@@ -468,21 +574,23 @@ export function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
       day: 'numeric',
       timeZone: TZ,
     });
-  const nowIdx = pts.findIndex((p) => Math.abs(p.ms - now) <= 1.5 * 3_600_000);
-  // D12: column nearest the store's selected instant. Class is emitted now,
-  // styled from UX-2 (so this refactor stays visually inert).
+  const nowIdx = pts.findIndex((p) => Math.abs(p.ms - now) <= 1.5 * HOUR);
+  // D12: column nearest the store's selected instant
   const selMs = selectedMs();
   const selIdx = Number.isNaN(selMs)
     ? -1
     : nearestIdx(pts.map((p) => p.ms), selMs);
 
-  // day header with colspans
+  // day header with colspans; click target = that day's local noon
   const dayCells: string[] = [];
   for (let i = 0; i < pts.length; ) {
     const d = dayOf(pts[i].ms);
     let span = 0;
     while (i + span < pts.length && dayOf(pts[i + span].ms) === d) span++;
-    dayCells.push(`<td colspan="${span}">${d.toUpperCase()}</td>`);
+    const noon = localMidnightAtOrBefore(pts[i].ms) + 12 * HOUR;
+    dayCells.push(
+      `<td colspan="${span}" data-ms="${noon}">${d.toUpperCase()}</td>`,
+    );
     i += span;
   }
 
@@ -490,22 +598,23 @@ export function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
     i > 0 && dayOf(pts[i].ms) !== dayOf(pts[i - 1].ms) ? ' day-edge' : '';
   const cls = (i: number) =>
     `${edge(i)}${i === nowIdx ? ' now-col' : ''}${i === selIdx ? ' sel-col' : ''}`;
+  const attrs = (i: number) => `class="${cls(i)}" data-ms="${pts[i].ms}"`;
 
   const hourCells = pts
-    .map((p, i) => `<td class="${cls(i)}">${localHour(p.ms) % 24}</td>`)
+    .map((p, i) => `<td ${attrs(i)}>${localHour(p.ms) % 24}</td>`)
     .join('');
 
   const ktCell = (val: number | null, i: number) => {
-    if (val == null) return `<td class="${cls(i)}">–</td>`;
+    if (val == null) return `<td ${attrs(i)}>–</td>`;
     const kt = val * MS_TO_KT;
     const bg = colorForKt(kt);
-    return `<td class="${cls(i)}" style="background:${bg};color:${inkFor(bg)}">${Math.round(kt)}</td>`;
+    return `<td ${attrs(i)} style="background:${bg};color:${inkFor(bg)}">${Math.round(kt)}</td>`;
   };
   const spdCells = pts.map((p, i) => ktCell(p.spd, i)).join('');
   const gustCells = pts.map((p, i) => ktCell(p.gust, i)).join('');
   const dirCells = pts
     .map((p, i) =>
-      `<td class="${cls(i)}"><span style="transform:rotate(${(p.dir + 180) % 360}deg)">↑</span></td>`)
+      `<td ${attrs(i)}><span style="transform:rotate(${(p.dir + 180) % 360}deg)">↑</span></td>`)
     .join('');
 
   el.innerHTML =
@@ -518,25 +627,22 @@ export function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
     '</table>';
 }
 
-function attachHover(
-  svg: SVGSVGElement,
-  tooltip: HTMLDivElement,
-  obsPts: Pt[],
-  fcst: Pt[],
-  x: (t: number) => number,
-  t0: number,
-  t1: number,
-): void {
-  const ns = 'http://www.w3.org/2000/svg';
-  const cross = document.createElementNS(ns, 'line');
-  cross.setAttribute('y1', String(M.t));
-  cross.setAttribute('y2', String(H - M.b));
-  cross.setAttribute('stroke', 'rgba(255,255,255,0.5)');
-  cross.setAttribute('visibility', 'hidden');
-  svg.appendChild(cross);
+// ---- chart hover (one-time listeners; data swapped per render) ----
 
+interface HoverData {
+  obsPts: Pt[];
+  fcst: Pt[];
+  x: (t: number) => number;
+  t0: number;
+  t1: number;
+}
+
+let hoverData: HoverData | null = null;
+
+function setupChartHover(svg: SVGSVGElement, tooltip: HTMLDivElement): void {
+  const cross = () => svg.querySelector('#sp-hover-cross');
   const hide = () => {
-    cross.setAttribute('visibility', 'hidden');
+    cross()?.setAttribute('visibility', 'hidden');
     tooltip.hidden = true;
   };
 
@@ -546,6 +652,8 @@ function attachHover(
       : null;
 
   svg.addEventListener('pointermove', (ev) => {
+    if (!hoverData) return;
+    const { obsPts, fcst, x, t0, t1 } = hoverData;
     const rect = svg.getBoundingClientRect();
     const t = t0 + (((ev.clientX - rect.left) / rect.width) * W - M.l)
       / (W - M.l - M.r) * (t1 - t0);
@@ -565,7 +673,9 @@ function attachHover(
           (o.dir != null ? ` @${Math.round(o.dir)}°` : ''),
       );
     }
-    if (f && Math.abs(f.t - t) <= 45 * 60_000) {
+    // forecast points sit on a 1 h (HRRR) or 3 h (GFS) grid — widen the
+    // snap radius so hover works across the whole day window
+    if (f && Math.abs(f.t - t) <= 95 * 60_000) {
       anchor = f.t;
       bits.push(
         `HRRR ${f.spd.toFixed(1)} kt` +
@@ -578,9 +688,10 @@ function attachHover(
       return;
     }
     const xx = x(anchor);
-    cross.setAttribute('x1', xx.toFixed(1));
-    cross.setAttribute('x2', xx.toFixed(1));
-    cross.setAttribute('visibility', 'visible');
+    const c = cross();
+    c?.setAttribute('x1', xx.toFixed(1));
+    c?.setAttribute('x2', xx.toFixed(1));
+    c?.setAttribute('visibility', 'visible');
     tooltip.textContent = `${fmtTime(anchor)} · ${bits.join(' · ')}`;
     tooltip.hidden = false;
     const px = (xx / W) * rect.width;

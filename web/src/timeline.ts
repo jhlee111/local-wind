@@ -8,6 +8,7 @@
 import { MS_TO_KT, colorForKt } from './palette.ts';
 import {
   TZ,
+  localMidnightAtOrBefore,
   nearestIdx,
   select,
   selectTime,
@@ -43,18 +44,6 @@ function fmtDayTick(ms: number): string {
   const wd = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: TZ });
   const day = d.toLocaleDateString('en-US', { day: 'numeric', timeZone: TZ });
   return `${wd} ${day}`.toUpperCase();
-}
-
-/** Ms of the local-TZ midnight at or before `ms` (DST-safe via day probing). */
-function localMidnightAtOrBefore(ms: number): number {
-  const dayKey = (t: number) =>
-    new Date(t).toLocaleDateString('en-CA', { timeZone: TZ }); // YYYY-MM-DD
-  const key = dayKey(ms);
-  // walk back in hour steps until the local day changes, then step forward
-  let t = ms;
-  while (dayKey(t - 3_600_000) === key) t -= 3_600_000;
-  // t is within the first hour of the local day; snap to the hour
-  return Math.floor(t / 3_600_000) * 3_600_000;
 }
 
 export function setupTimeline(cfg: { run: string; frames: Frame[] }): TimelineApi {

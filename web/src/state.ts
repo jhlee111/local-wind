@@ -5,6 +5,20 @@
 /** Display timezone for every user-facing time label. */
 export const TZ = 'America/Los_Angeles';
 
+/** Local-TZ calendar-day key, e.g. "2026-07-12". */
+export function dayKey(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-CA', { timeZone: TZ });
+}
+
+/** Ms of the local-TZ midnight at or before `ms` (DST-safe via probing). */
+export function localMidnightAtOrBefore(ms: number): number {
+  const key = dayKey(ms);
+  // walk back in hour steps until the local day changes, then snap to hour
+  let t = ms;
+  while (dayKey(t - 3_600_000) === key) t -= 3_600_000;
+  return Math.floor(t / 3_600_000) * 3_600_000;
+}
+
 export interface TimeState {
   /** Selectable instants, epoch ms, sorted ascending, unique. */
   times: number[];
