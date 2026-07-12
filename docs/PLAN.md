@@ -30,7 +30,7 @@
 
 - **M0** (옵션, 반나절): Open-Meteo API로 Cabrillo 48h 바람 시계열 플롯 1장. — 파이프라인 감 잡기용, 건너뛰어도 됨
 - **M1** ✅ (2026-07-12): `pipeline/` — Herbie로 South Bay bbox HRRR 10m U/V 서브셋 → quiver/barbs 정적 PNG 1장. **DoD**: 명령 한 번에 최신 HRRR로 바람장 PNG 생성 → `uv run --project pipeline python -m localwind.plot_once` 동작 확인. bake(13프레임) + 웹 파티클 렌더·시간 슬라이더까지 로컬 검증 완료 (M2의 로컬 부분 선행 달성)
-- **M1.5**: `pipeline/obs/` — KTOA METAR + CO-OPS 9410660 + NDBC 46025 매시 수집 → parquet append. **DoD**: cron 3일 연속 무결 수집
+- **M1.5** 수집기 ✅ (2026-07-12): `localwind.obs` — KTOA METAR + **NDBC AGXC1**(Angels Gate, LA 하버 입구 — Cabrillo 바로 앞) + NDBC 46025 → `data/obs/YYYY-MM.parquet` dedup 병합. ⚠️ 당초 계획의 CO-OPS 9410660은 **바람 센서 없음**(기압·수위만)이 확인되어 AGXC1로 대체. **잔여 DoD**: 상시 스케줄 가동(cron 3일 무결) — M2 인프라(Actions cron)에서 활성화
 - **M2**: `web/` — MapLibre + WeatherLayers 파티클+컬러 오버레이, 예보 시간 슬라이더. Actions hourly cron이 U/V PNG를 굽고 Pages/R2 배포. **DoD**: 공개 URL에서 최신 예보 자동 갱신 ("내 무료 windy" 달성 지점)
 - **M3**: WindNinja(mass solver, HRRR init, 3DEP 10m + NLCD) ~200m 레이어 토글. **DoD**: 동일 시각 HRRR raw vs 다운스케일 비교 화면
 - **M4**: 검증 대시보드 + 스팟 통계보정. **DoD**: 스팟·시간대별 bias 차트, 보정 전/후 MAE 리포트 → **D5 재평가(WindNinja 정식 채택 여부) + 보정 모델 예보 적용**
@@ -39,7 +39,7 @@
 
 - ~~WeatherLayers GL 라이선스~~ → **해소(2026-07-12)**: npm 메타데이터 확인 결과 `(MPL-2.0 OR 상업 라이선스)` 듀얼 — MPL-2.0 옵션으로 무료 사용 가능 (weatherlayers-gl 2026.5.2)
 - GH Actions 무료 쿼터에서 WindNinja hourly 실행 실측 (P3 진입 시)
-- CO-OPS 9410660 바람 센서 실가동 여부, NDBC 46025 결측률
+- ~~CO-OPS 9410660 바람 센서 실가동 여부~~ → **해소(2026-07-12)**: 센서 목록에 anemometer 없음 확인 → NDBC AGXC1(Angels Gate, 6분 간격)로 대체. NDBC 46025 결측률은 데이터 쌓이면 관찰
 - cfgrib 다중 typeOfLevel 읽기 시 `filter_by_keys` 필요 (Herbie `.xarray()`가 대부분 처리)
 
 ### 구현 gotcha (발견 시 추가)
