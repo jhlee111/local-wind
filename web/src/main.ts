@@ -5,9 +5,16 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import {
   ImageType,
   ParticleLayer,
+  RasterLayer,
   loadTextureData,
   type TextureData,
 } from 'weatherlayers-gl';
+import {
+  LEGEND_MAX_KT,
+  LEGEND_TICKS_KT,
+  WIND_PALETTE,
+  legendGradient,
+} from './palette.ts';
 
 interface Frame {
   fxx: number;
@@ -25,6 +32,19 @@ interface Manifest {
 
 const frameLabel = document.getElementById('frame-label') as HTMLDivElement;
 const slider = document.getElementById('frame-slider') as HTMLInputElement;
+
+function buildLegend(): void {
+  (document.getElementById('legend-bar') as HTMLDivElement).style.background =
+    legendGradient();
+  const ticks = document.getElementById('legend-ticks') as HTMLDivElement;
+  ticks.innerHTML = '';
+  for (const kt of LEGEND_TICKS_KT) {
+    const s = document.createElement('span');
+    s.textContent = String(kt);
+    s.style.left = `${(kt / LEGEND_MAX_KT) * 100}%`;
+    ticks.appendChild(s);
+  }
+}
 
 async function init(): Promise<void> {
   let manifest: Manifest;
@@ -84,6 +104,15 @@ async function init(): Promise<void> {
     const image = await texture(i);
     overlay.setProps({
       layers: [
+        new RasterLayer({
+          id: 'wind-speed',
+          image,
+          imageType: ImageType.VECTOR,
+          imageUnscale: manifest.unscale,
+          bounds: manifest.bounds,
+          palette: WIND_PALETTE,
+          opacity: 0.55,
+        }),
         new ParticleLayer({
           id: 'wind-particles',
           image,
@@ -94,8 +123,8 @@ async function init(): Promise<void> {
           maxAge: 25,
           speedFactor: 8,
           width: 1.6,
-          color: [30, 48, 80, 255],
-          opacity: 0.9,
+          color: [20, 24, 40, 255],
+          opacity: 0.8,
         }),
       ],
     });
@@ -113,6 +142,7 @@ async function init(): Promise<void> {
     frameLabel.textContent = `${local} · HRRR ${manifest.run.slice(11, 13)}Z f${fxx}`;
   }
 
+  buildLegend();
   slider.max = String(manifest.frames.length - 1);
   slider.addEventListener('input', () => void setFrame(Number(slider.value)));
   map.on('load', () => void setFrame(0));

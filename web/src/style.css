@@ -28,6 +28,48 @@ body,
   font: 13px/1.5 system-ui, -apple-system, sans-serif;
 }
 
+#legend {
+  margin-bottom: 12px;
+}
+
+#legend-bar {
+  height: 10px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+#legend-ticks {
+  position: relative;
+  height: 14px;
+  margin-top: 3px;
+}
+
+#legend-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(232, 237, 246, 0.85);
+  white-space: nowrap;
+}
+
+#legend-ticks span::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 1px;
+  height: 3px;
+  background: rgba(232, 237, 246, 0.5);
+}
+
+#legend-unit {
+  margin-top: 1px;
+  font-size: 10px;
+  color: rgba(232, 237, 246, 0.6);
+  text-align: right;
+}
+
 #frame-label {
   margin-bottom: 6px;
   font-variant-numeric: tabular-nums;
