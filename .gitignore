@@ -1,0 +1,15 @@
+# python
+.venv/
+__pycache__/
+*.pyc
+pipeline/.cache/
+pipeline/out/
+
+# node
+node_modules/
+web/dist/
+
+# generated wind data (baked hourly; served from CI artifacts / R2, not git)
+web/public/data/
+
+.DS_Store
