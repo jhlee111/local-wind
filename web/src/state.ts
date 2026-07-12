@@ -2,6 +2,9 @@
 // timeline scrubber, week-table highlight, chart cursor) is a *view* of the
 // one selected instant here; none of them talk to each other directly.
 
+/** Display timezone for every user-facing time label. */
+export const TZ = 'America/Los_Angeles';
+
 export interface TimeState {
   /** Selectable instants, epoch ms, sorted ascending, unique. */
   times: number[];

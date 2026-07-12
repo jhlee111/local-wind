@@ -162,12 +162,14 @@ export function setupSpots(
 
   const tableEl = document.getElementById('sp-table') as HTMLDivElement;
 
-  // D12: the week table is a view of the time store — while the panel is
-  // open, re-render it when T changes so the selected column can track T.
-  // (Column *clicks* publish back into the store in UX-3.)
+  // D12: the week table and chart cursor are views of the time store —
+  // while the panel is open they track T. (Column *clicks* publish back
+  // into the store in UX-3.)
   let openSeries: SeriesPt[] = [];
   subscribe(() => {
-    if (panel.hidden || openSeries.length === 0) return;
+    if (panel.hidden) return;
+    positionChartCursor();
+    if (openSeries.length === 0) return;
     const scroll = tableEl.scrollLeft; // innerHTML swap must not reset it
     renderWeekTable(tableEl, openSeries);
     tableEl.scrollLeft = scroll;
@@ -313,6 +315,27 @@ function localHour(t: number): number {
   );
 }
 
+// Chart time window of the last render — lets the store subscription move
+// the T-cursor without a full chart rebuild (no listener churn).
+let chartWin: { svg: SVGSVGElement; t0: number; t1: number } | null = null;
+
+/** Move/show the chart's T-cursor to the store's selected instant. */
+function positionChartCursor(): void {
+  if (!chartWin) return;
+  const cur = chartWin.svg.querySelector('#sp-tcursor');
+  if (!cur) return;
+  const ms = selectedMs();
+  const { t0, t1 } = chartWin;
+  if (Number.isNaN(ms) || ms < t0 || ms > t1) {
+    cur.setAttribute('visibility', 'hidden');
+    return;
+  }
+  const xx = (M.l + ((ms - t0) / (t1 - t0)) * (W - M.l - M.r)).toFixed(1);
+  cur.setAttribute('x1', xx);
+  cur.setAttribute('x2', xx);
+  cur.setAttribute('visibility', 'visible');
+}
+
 function render(
   svg: SVGSVGElement,
   tooltip: HTMLDivElement,
@@ -412,9 +435,16 @@ function render(
     }
   }
 
+  parts.push(
+    `<line id="sp-tcursor" y1="${M.t - 4}" y2="${H - M.b}" stroke="#4da3ff" stroke-width="1.5" visibility="hidden"/>`,
+  );
+
   svg.innerHTML =
     '<style>.tick{font:9px system-ui;fill:rgba(232,237,246,0.6)}.dlabel{font:600 9.5px system-ui}</style>' +
     parts.join('');
+
+  chartWin = { svg, t0, t1 };
+  positionChartCursor();
 
   attachHover(svg, tooltip, obsPts, fcst, x, t0, t1);
 }

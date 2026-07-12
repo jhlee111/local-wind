@@ -8,13 +8,21 @@
   <body>
     <div id="map"></div>
     <div id="panel">
-      <div id="legend">
+      <div id="tl-head">
+        <div id="tl-time">loading wind data…</div>
+        <div id="tl-sub"></div>
+      </div>
+      <div id="timeline"></div>
+    </div>
+    <div id="legend-corner">
+      <button id="legend-toggle" aria-expanded="false" aria-label="wind speed legend">
+        <span id="legend-chip"></span><span>kt</span>
+      </button>
+      <div id="legend" hidden>
         <div id="legend-bar"></div>
         <div id="legend-ticks"></div>
         <div id="legend-unit">wind speed (kt)</div>
       </div>
-      <div id="frame-label">loading wind data…</div>
-      <input id="frame-slider" type="range" min="0" max="0" value="0" step="1" />
     </div>
     <div id="spot-panel" hidden>
       <div id="sp-head">
