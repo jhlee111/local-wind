@@ -15,3 +15,4 @@
 - **배포는 push → CI(bake-wind)로만.** 로컬 `wrangler pages deploy`는 로컬의 낡은 bake 데이터로 라이브를 덮어쓰므로 금지 (예: 첫 배포 같은 예외만 의식적으로).
 - **collect-obs cron이 매시 main에 커밋**한다 — 작업 시작 시와 push 전에 `git pull --rebase` 습관.
 - 프리뷰 검증 시 이 환경(브라우저 pane)은 외부 origin(타일 호스트)을 차단할 수 있음 — basemap 없이 fallback 배경이 떠도 코드 문제 아님. 합성 클릭이 안 먹으면 PointerEvent dispatch로 검증.
+- pane의 **이미지 디코드 풀이 통째로 멈추는** 일이 있음(1px data URI도 decode 타임아웃 → 래스터/차트 pending 지속). 대처: ①타임라인 ←/→로 프레임을 한 장씩 순차 워밍업(병렬 디코드 회피) ②콘솔에서 `import('/src/xxx.ts')` 하면 실행 중인 앱과 **같은 모듈 인스턴스**를 얻어 렌더 함수를 디코드 없이 직접 검증 가능 ③dev 핸들 `window.__lwMap`/`__lwTime`(DEV 빌드 전용) 활용.
