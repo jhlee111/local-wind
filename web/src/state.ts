@@ -81,6 +81,12 @@ export function initTimes(times: number[]): void {
   publish();
 }
 
+/** Add selectable instants (e.g. an ad-hoc point's series) — keeps T. */
+export function extendTimes(extra: number[]): void {
+  if (extra.length === 0) return;
+  initTimes([...state.times, ...extra]);
+}
+
 export function select(idx: number): void {
   if (state.times.length === 0) return;
   const clamped = Math.max(0, Math.min(state.times.length - 1, Math.round(idx)));

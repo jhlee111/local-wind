@@ -7,11 +7,13 @@
 
 import maplibregl from 'maplibre-gl';
 import type { TextureData } from 'weatherlayers-gl';
+import { fetchPointSeries } from './openmeteo.ts';
 import { MS_TO_KT, colorForKt, inkFor } from './palette.ts';
 import { sheetEnsureVisible } from './sheet.ts';
 import {
   TZ,
   dayKey,
+  extendTimes,
   localMidnightAtOrBefore,
   nearestIdx,
   selectTime,
@@ -83,6 +85,8 @@ interface Pt {
   spd: number;
   dir: number | null;
   gust: number | null;
+  /** model source of this point ("hrrr" | "gfs" | "open-meteo") */
+  src?: string;
 }
 
 // Series colors — dataviz-validated pair (lightness band + CVD + contrast,
@@ -188,9 +192,10 @@ export function setupSpots(
   // D12, read side: while the panel is open the week table highlight, the
   // chart T-cursor, and the chart's day window all track the store.
   let openSeries: SeriesPt[] = [];
+  let openSrc = '';
   subscribe(() => {
     if (panel.hidden) return;
-    if (chartData && !chartData.isPoint) {
+    if (chartData && !chartData.fixedWindow) {
       const key = dayKey(selectedMs());
       if (key !== chartDayKey) {
         chartDayKey = key;
@@ -200,7 +205,7 @@ export function setupSpots(
     positionChartCursor();
     if (openSeries.length === 0) return;
     const scroll = tableEl.scrollLeft; // innerHTML swap must not reset it
-    renderWeekTable(tableEl, openSeries);
+    renderWeekTable(tableEl, openSeries, openSrc);
     tableEl.scrollLeft = scroll;
   });
 
@@ -218,21 +223,40 @@ export function setupSpots(
     tooltip.hidden = true;
     tableEl.hidden = true;
 
-    const [obs, seriesJson] = await Promise.all([
+    // Week series: baked HRRR+GFS for named spots, Open-Meteo client fetch
+    // for ad-hoc points (UX-5) — same shape, so the whole panel renders
+    // identically for both (D13: one sheet, same UI).
+    const isPoint = spot.id === 'point';
+    const [obs, seriesJson, pointSeries] = await Promise.all([
       getObs(),
-      spot.id === 'point' ? Promise.resolve(null) : loadSeries(),
+      isPoint ? Promise.resolve(null) : loadSeries(),
+      isPoint ? fetchPointSeries(spot.lat, spot.lon) : Promise.resolve(null),
     ]);
 
-    const weekSeries = seriesJson?.spots[spot.id]?.series ?? [];
+    const weekSeries = isPoint
+      ? (pointSeries ?? [])
+      : (seriesJson?.spots[spot.id]?.series ?? []);
+    const srcLabel = seriesSrcLabel(weekSeries);
     openSeries = weekSeries;
+    openSrc = srcLabel;
     if (weekSeries.length > 0) {
-      renderWeekTable(tableEl, weekSeries);
+      renderWeekTable(tableEl, weekSeries, srcLabel);
       tableEl.hidden = false;
+      if (isPoint) {
+        // make the point's future instants selectable (Open-Meteo starts at
+        // 00 UTC today — don't drag the timeline into the past)
+        extendTimes(
+          weekSeries
+            .map((p) => Date.parse(p.t))
+            .filter((ms) => ms >= Date.now() - 1.5 * HOUR),
+        );
+      }
     }
 
-    // Forecast source: the baked 8-day point series when we have it (drives
-    // the day-window chart across the whole week); otherwise sample the U/V
-    // rasters (ad-hoc points, or a spot whose series failed to load).
+    // Forecast for the chart: the week series when we have it (drives the
+    // day-window chart across the whole week); otherwise sample the U/V
+    // rasters (series fetch failed — fixed legacy window).
+    const fcstLabel = weekSeries.length > 0 ? srcLabel : 'HRRR';
     let fcstAll: Pt[];
     if (weekSeries.length > 0) {
       fcstAll = weekSeries.map((p) => ({
@@ -240,6 +264,7 @@ export function setupSpots(
         spd: p.spd * MS_TO_KT,
         dir: p.dir,
         gust: p.gust != null ? p.gust * MS_TO_KT : null,
+        src: p.src,
       }));
     } else {
       const textures = await Promise.all(
@@ -254,9 +279,12 @@ export function setupSpots(
           spd: Math.hypot(u, v) * MS_TO_KT,
           dir: dirFrom(u, v),
           gust: null,
+          src: 'hrrr',
         };
       });
     }
+    (document.getElementById('sp-fcst-label') as HTMLSpanElement).textContent =
+      fcstLabel;
 
     const raw: ObsPoint[] = spot.obs ? (obs?.sources[spot.obs] ?? []) : [];
     const obsAll: Pt[] = raw
@@ -274,8 +302,9 @@ export function setupSpots(
         (last.gust != null ? ` (g ${last.gust.toFixed(0)})` : '') +
         (last.dir != null ? ` @ ${Math.round(last.dir)}°` : '') +
         ` · ${fmtTime(last.t)}`
-      : spot.id === 'point'
-        ? 'HRRR 3 km grid · interpolated (no station)' // D10: honest resolution label
+      : isPoint
+        ? // D10: honest source + resolution label for stationless points
+          `${fcstLabel === 'HRRR' ? 'HRRR 3 km grid' : fcstLabel} · interpolated (no station)`
         : 'no recent observation';
 
     chartData = {
@@ -283,7 +312,8 @@ export function setupSpots(
       tooltip,
       obsAll,
       fcstAll,
-      isPoint: spot.id === 'point' || weekSeries.length === 0,
+      fcstLabel,
+      fixedWindow: weekSeries.length === 0,
     };
     chartDayKey = dayKey(selectedMs());
     renderChart();
@@ -357,6 +387,17 @@ function localHour(t: number): number {
   );
 }
 
+/** Human label for the unique sources in a series ("HRRR + GFS", "Open-Meteo"). */
+function seriesSrcLabel(series: { src?: string }[]): string {
+  const pretty: Record<string, string> = {
+    hrrr: 'HRRR',
+    gfs: 'GFS',
+    'open-meteo': 'Open-Meteo',
+  };
+  const srcs = [...new Set(series.map((p) => p.src).filter(Boolean))] as string[];
+  return srcs.map((s) => pretty[s] ?? s.toUpperCase()).join(' + ');
+}
+
 function fmtChartDay(ms: number): string {
   return new Date(ms)
     .toLocaleDateString('en-US', {
@@ -376,8 +417,10 @@ interface ChartData {
   tooltip: HTMLDivElement;
   obsAll: Pt[];
   fcstAll: Pt[];
-  /** Fixed legacy window (no 8-day series): ad-hoc points until UX-5. */
-  isPoint: boolean;
+  /** Forecast source shown on the line label and hover ("HRRR", "Open-Meteo"). */
+  fcstLabel: string;
+  /** Fixed legacy window — only when no week series is available at all. */
+  fixedWindow: boolean;
 }
 
 let chartData: ChartData | null = null;
@@ -386,13 +429,13 @@ let chartDayKey: string | null = null;
 /** (Re)draw the chart for the current selection's local day. */
 function renderChart(): void {
   if (!chartData) return;
-  const { svg, tooltip, obsAll, fcstAll, isPoint } = chartData;
+  const { svg, tooltip, obsAll, fcstAll, fcstLabel, fixedWindow } = chartData;
   const now = Date.now();
 
   let t0: number;
   let t1: number;
   let dayLabel = '';
-  if (isPoint) {
+  if (fixedWindow) {
     // ad-hoc points have no obs history — don't waste 2/3 of the chart on
     // an empty past window
     const pastH = obsAll.length > 0 ? PAST_H : 3;
@@ -409,13 +452,19 @@ function renderChart(): void {
   if (dayEl) dayEl.textContent = dayLabel;
   tooltip.hidden = true; // window changed under the pointer — stale text
 
+  const fcstWin = fcstAll.filter((p) => p.t >= t0 && p.t <= t1);
+  // D10: label the line with the source(s) actually shown in this window
+  // (near-term days are HRRR, later days GFS; ad-hoc points Open-Meteo)
+  const winLabel = seriesSrcLabel(fcstWin) || fcstLabel;
+
   render(
     svg,
     obsAll.filter((p) => p.t >= t0 && p.t <= t1),
-    fcstAll.filter((p) => p.t >= t0 && p.t <= t1),
+    fcstWin,
     now,
     t0,
     t1,
+    winLabel,
   );
 }
 
@@ -447,6 +496,7 @@ function render(
   now: number,
   t0: number,
   t1: number,
+  fcstLabel: string,
 ): void {
   const maxV = Math.max(
     10,
@@ -530,7 +580,7 @@ function render(
     }
     const fl = fcst[fcst.length - 1];
     parts.push(
-      `<text x="${x(fl.t).toFixed(1)}" y="${(y(fl.spd) - 7).toFixed(1)}" text-anchor="end" class="dlabel" fill="${FCST_COLOR}">HRRR</text>`,
+      `<text x="${x(fl.t).toFixed(1)}" y="${(y(fl.spd) - 7).toFixed(1)}" text-anchor="end" class="dlabel" fill="${FCST_COLOR}">${fcstLabel}</text>`,
     );
     // forecast direction arrows (arrow points where the wind is going)
     for (let i = 0; i < fcst.length; i += 2) {
@@ -554,11 +604,15 @@ function render(
   chartWin = { svg, t0, t1 };
   positionChartCursor();
 
-  hoverData = { obsPts, fcst, x, t0, t1 };
+  hoverData = { obsPts, fcst, x, t0, t1, fcstLabel };
 }
 
 /** windy-style week matrix: 3 h columns × (hour / kt / gust / dir) rows. */
-export function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
+export function renderWeekTable(
+  el: HTMLDivElement,
+  series: SeriesPt[],
+  srcLabel = '',
+): void {
   const now = Date.now();
   const pts = series
     .map((p) => ({ ...p, ms: Date.parse(p.t) }))
@@ -626,7 +680,9 @@ export function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
     `<tr class="kt"><th>kt</th>${spdCells}</tr>` +
     `<tr class="gust"><th>gust</th>${gustCells}</tr>` +
     `<tr class="dir"><th>dir</th>${dirCells}</tr>` +
-    '</table>';
+    '</table>' +
+    // D10: keep the model source visible where the data is
+    (srcLabel ? `<div class="tbl-src">source: ${srcLabel}</div>` : '');
 }
 
 // ---- chart hover (one-time listeners; data swapped per render) ----
@@ -637,6 +693,7 @@ interface HoverData {
   x: (t: number) => number;
   t0: number;
   t1: number;
+  fcstLabel: string;
 }
 
 let hoverData: HoverData | null = null;
@@ -655,7 +712,7 @@ function setupChartHover(svg: SVGSVGElement, tooltip: HTMLDivElement): void {
 
   svg.addEventListener('pointermove', (ev) => {
     if (!hoverData) return;
-    const { obsPts, fcst, x, t0, t1 } = hoverData;
+    const { obsPts, fcst, x, t0, t1, fcstLabel } = hoverData;
     const rect = svg.getBoundingClientRect();
     const t = t0 + (((ev.clientX - rect.left) / rect.width) * W - M.l)
       / (W - M.l - M.r) * (t1 - t0);
@@ -680,7 +737,7 @@ function setupChartHover(svg: SVGSVGElement, tooltip: HTMLDivElement): void {
     if (f && Math.abs(f.t - t) <= 95 * 60_000) {
       anchor = f.t;
       bits.push(
-        `HRRR ${f.spd.toFixed(1)} kt` +
+        `${fcstLabel} ${f.spd.toFixed(1)} kt` +
           (f.gust != null ? ` g${f.gust.toFixed(0)}` : '') +
           ` @${Math.round(f.dir ?? 0)}°`,
       );

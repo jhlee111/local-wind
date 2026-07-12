@@ -21,9 +21,13 @@ body,
   z-index: 10;
   width: min(880px, calc(100vw - 24px));
   padding: 8px 14px 10px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: rgba(12, 16, 24, 0.78);
   backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   color: #e8edf6;
   font: 13px/1.5 system-ui, -apple-system, sans-serif;
 }
@@ -40,8 +44,14 @@ body,
 
 #tl-time {
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
+}
+
+#tl-time .tl-wd {
+  font-weight: 500;
+  color: rgba(232, 237, 246, 0.62);
 }
 
 #tl-sub {
@@ -130,13 +140,14 @@ body,
 
 #tl-knob {
   position: absolute;
-  top: -5px;
+  top: -6px;
   left: 50%;
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: #fff;
+  background: #fff; /* JS paints it with the palette color of T's wind */
+  border: 2px solid #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
 }
 
@@ -194,9 +205,13 @@ body,
 #legend {
   width: min(300px, calc(100vw - 24px));
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: rgba(12, 16, 24, 0.85);
   backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 #legend-bar {
@@ -271,6 +286,10 @@ body,
   border-radius: 12px;
   background: rgba(12, 16, 24, 0.85);
   backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   color: #e8edf6;
   font: 13px/1.45 system-ui, -apple-system, sans-serif;
 }
@@ -446,6 +465,13 @@ body,
 #sp-table tr.dir span {
   display: inline-block;
   font-size: 11px;
+}
+
+#sp-table .tbl-src {
+  margin-top: 4px;
+  font-size: 9.5px;
+  color: rgba(232, 237, 246, 0.5);
+  text-align: right;
 }
 
 #credit {

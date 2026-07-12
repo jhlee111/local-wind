@@ -114,7 +114,19 @@ export function setupTimeline(cfg: { run: string; frames: Frame[] }): TimelineAp
     const ms = selectedMs();
     if (Number.isNaN(ms)) return;
     playhead.style.left = `${Math.min(100, Math.max(0, xPct(ms)))}%`;
-    timeEl.textContent = fmtPlayhead(ms);
+
+    // "Sun 2 PM" with the weekday de-emphasized (values from toLocaleString,
+    // safe to inject)
+    const [wd, ...rest] = fmtPlayhead(ms).split(' ');
+    timeEl.innerHTML = `<span class="tl-wd">${wd}</span> ${rest.join(' ')}`;
+
+    // the knob wears the palette color of T's wind — the playhead reads as
+    // "how windy is the selected moment" at a glance
+    const knob = document.getElementById('tl-knob');
+    if (knob && series.length > 0) {
+      const i = nearestIdx(series.map((p) => Date.parse(p.t)), ms);
+      knob.style.background = colorForKt(series[i].spd * MS_TO_KT);
+    }
 
     const fi = nearestIdx(frameTimes, ms);
     const fxx = String(cfg.frames[fi].fxx).padStart(2, '0');
