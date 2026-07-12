@@ -4,7 +4,7 @@
 
 import maplibregl from 'maplibre-gl';
 import type { TextureData } from 'weatherlayers-gl';
-import { MS_TO_KT } from './palette.ts';
+import { MS_TO_KT, colorForKt, inkFor } from './palette.ts';
 
 export interface Spot {
   id: string;
@@ -38,6 +38,19 @@ interface ObsPoint {
 interface ObsJson {
   generated: string;
   sources: Record<string, ObsPoint[]>;
+}
+
+interface SeriesPt {
+  t: string;
+  spd: number;
+  gust: number | null;
+  dir: number;
+  src: string;
+}
+
+interface SeriesJson {
+  generated: string;
+  spots: Record<string, { name: string; series: SeriesPt[] }>;
 }
 
 interface Pt {
@@ -99,6 +112,20 @@ export function setupSpots(
     return obsCache;
   }
 
+  let seriesCache: SeriesJson | null | undefined;
+  async function getSeries(): Promise<SeriesJson | null> {
+    if (seriesCache !== undefined) return seriesCache;
+    try {
+      const r = await fetch('/data/spots_series.json', {
+        signal: AbortSignal.timeout(8000),
+      });
+      seriesCache = r.ok ? ((await r.json()) as SeriesJson) : null;
+    } catch {
+      seriesCache = null;
+    }
+    return seriesCache;
+  }
+
   for (const spot of spots) {
     const el = document.createElement('div');
     el.className = 'spot-marker';
@@ -134,6 +161,8 @@ export function setupSpots(
       .addTo(map);
   }
 
+  const tableEl = document.getElementById('sp-table') as HTMLDivElement;
+
   async function openSpot(spot: Spot): Promise<void> {
     if (spot.id !== 'point') pointMarker?.remove();
     panel.hidden = false;
@@ -145,11 +174,19 @@ export function setupSpots(
       : 'obs';
     chart.innerHTML = '';
     tooltip.hidden = true;
+    tableEl.hidden = true;
 
-    const [textures, obs] = await Promise.all([
+    const [textures, obs, seriesJson] = await Promise.all([
       Promise.all(manifest.frames.map((_f, i) => getTexture(i))),
       getObs(),
+      spot.id === 'point' ? Promise.resolve(null) : getSeries(),
     ]);
+
+    const weekSeries = seriesJson?.spots[spot.id]?.series ?? [];
+    if (weekSeries.length > 0) {
+      renderWeekTable(tableEl, weekSeries);
+      tableEl.hidden = false;
+    }
 
     const fcst: Pt[] = manifest.frames.map((f, i) => {
       const { u, v } = sampleUV(
@@ -357,6 +394,69 @@ function render(
     parts.join('');
 
   attachHover(svg, tooltip, obsPts, fcst, x, t0, t1);
+}
+
+/** windy-style week matrix: 3 h columns × (hour / kt / gust / dir) rows. */
+function renderWeekTable(el: HTMLDivElement, series: SeriesPt[]): void {
+  const now = Date.now();
+  const pts = series
+    .map((p) => ({ ...p, ms: Date.parse(p.t) }))
+    .filter((p) => new Date(p.ms).getUTCHours() % 3 === 0)
+    .filter((p) => p.ms >= now - 1.5 * 3_600_000);
+  if (pts.length === 0) {
+    el.hidden = true;
+    return;
+  }
+
+  const dayOf = (ms: number) =>
+    new Date(ms).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'numeric',
+      day: 'numeric',
+      timeZone: TZ,
+    });
+  const nowIdx = pts.findIndex((p) => Math.abs(p.ms - now) <= 1.5 * 3_600_000);
+
+  // day header with colspans
+  const dayCells: string[] = [];
+  for (let i = 0; i < pts.length; ) {
+    const d = dayOf(pts[i].ms);
+    let span = 0;
+    while (i + span < pts.length && dayOf(pts[i + span].ms) === d) span++;
+    dayCells.push(`<td colspan="${span}">${d.toUpperCase()}</td>`);
+    i += span;
+  }
+
+  const edge = (i: number) =>
+    i > 0 && dayOf(pts[i].ms) !== dayOf(pts[i - 1].ms) ? ' day-edge' : '';
+  const nowCls = (i: number) => (i === nowIdx ? ' now-col' : '');
+
+  const hourCells = pts
+    .map((p, i) =>
+      `<td class="${edge(i)}${nowCls(i)}">${localHour(p.ms) % 24}</td>`)
+    .join('');
+
+  const ktCell = (val: number | null, i: number) => {
+    if (val == null) return `<td class="${edge(i)}${nowCls(i)}">–</td>`;
+    const kt = val * MS_TO_KT;
+    const bg = colorForKt(kt);
+    return `<td class="${edge(i)}${nowCls(i)}" style="background:${bg};color:${inkFor(bg)}">${Math.round(kt)}</td>`;
+  };
+  const spdCells = pts.map((p, i) => ktCell(p.spd, i)).join('');
+  const gustCells = pts.map((p, i) => ktCell(p.gust, i)).join('');
+  const dirCells = pts
+    .map((p, i) =>
+      `<td class="${edge(i)}${nowCls(i)}"><span style="transform:rotate(${(p.dir + 180) % 360}deg)">↑</span></td>`)
+    .join('');
+
+  el.innerHTML =
+    '<table>' +
+    `<tr class="days"><th></th>${dayCells.join('')}</tr>` +
+    `<tr class="hours"><th>h</th>${hourCells}</tr>` +
+    `<tr class="kt"><th>kt</th>${spdCells}</tr>` +
+    `<tr class="gust"><th>gust</th>${gustCells}</tr>` +
+    `<tr class="dir"><th>dir</th>${dirCells}</tr>` +
+    '</table>';
 }
 
 function attachHover(

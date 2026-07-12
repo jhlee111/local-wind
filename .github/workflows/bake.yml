@@ -25,10 +25,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: Bake wind rasters from latest HRRR
-        run: uv run --project pipeline python -m localwind.bake --frames 13
+        run: uv run --project pipeline python -m localwind.bake --frames 19
 
       - name: Export recent observations (spot panel)
         run: uv run --project pipeline python -m localwind.export_obs
+
+      - name: Bake spot point-forecast series (week table)
+        run: uv run --project pipeline python -m localwind.spot_series
 
       - uses: actions/setup-node@v4
         with:

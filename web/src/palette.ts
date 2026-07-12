@@ -43,3 +43,39 @@ export function legendGradient(): string {
   );
   return `linear-gradient(to right, ${stops.join(', ')})`;
 }
+
+function hexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Continuous lookup: linear interpolation between the palette stops. */
+export function colorForKt(kt: number): string {
+  const stops = WIND_STOPS_KT;
+  if (kt <= stops[0][0]) return stops[0][1];
+  for (let i = 1; i < stops.length; i++) {
+    if (kt <= stops[i][0]) {
+      const [k0, c0] = stops[i - 1];
+      const [k1, c1] = stops[i];
+      const f = (kt - k0) / (k1 - k0);
+      const a = hexRgb(c0);
+      const b = hexRgb(c1);
+      const mix = a.map((x, ch) => Math.round(x + (b[ch] - x) * f));
+      return `rgb(${mix[0]},${mix[1]},${mix[2]})`;
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+
+/** Ink (text) color that stays readable on a palette-colored cell. */
+export function inkFor(cssColor: string): string {
+  const m = cssColor.startsWith('#')
+    ? hexRgb(cssColor)
+    : (cssColor.match(/\d+/g) ?? ['0', '0', '0']).slice(0, 3).map(Number);
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const lum = 0.2126 * lin(m[0]) + 0.7152 * lin(m[1]) + 0.0722 * lin(m[2]);
+  return lum > 0.35 ? '#0b0e13' : '#e8edf6';
+}
