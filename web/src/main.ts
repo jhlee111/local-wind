@@ -47,9 +47,13 @@ function buildLegend(): void {
 }
 
 async function init(): Promise<void> {
+  buildLegend(); // static (palette only) — show it regardless of data/basemap
+
   let manifest: Manifest;
   try {
-    const res = await fetch('/data/wind.json');
+    const res = await fetch('/data/wind.json', {
+      signal: AbortSignal.timeout(10000),
+    });
     if (!res.ok) throw new Error(`${res.status}`);
     manifest = (await res.json()) as Manifest;
   } catch {
@@ -142,10 +146,22 @@ async function init(): Promise<void> {
     frameLabel.textContent = `${local} · HRRR ${manifest.run.slice(11, 13)}Z f${fxx}`;
   }
 
-  buildLegend();
   slider.max = String(manifest.frames.length - 1);
   slider.addEventListener('input', () => void setFrame(Number(slider.value)));
-  map.on('load', () => void setFrame(0));
+
+  // First render must NOT depend on the basemap: deck.gl renders on its own,
+  // and 'load' never fires if the basemap host is blocked/unreachable. Fire on
+  // whichever comes first — already-loaded, load, style.load, or a timeout.
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    void setFrame(0);
+  };
+  if (map.loaded()) start();
+  map.on('load', start);
+  map.on('style.load', start);
+  setTimeout(start, 6500);
 }
 
 void init();
